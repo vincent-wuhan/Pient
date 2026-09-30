@@ -1,11 +1,11 @@
 workflow: full
-phase: design
+phase: build
 build_mode: null
 build_pause: null
 isolation: null
 verify_mode: null
 base_ref: 747414ae7d3d7d1bd507a0abc04939e8b7593a30
-design_doc: null
+design_doc: docs/superpowers/specs/2026-10-01-multica-opc-runtime-design.md
 plan: null
 verify_result: pending
 verification_report: null
@@ -14,4 +14,4 @@ created_at: 2026-10-01
 verified_at: null
 archived: false
 handoff_context: openspec/changes/multica-opc-runtime/.comet/handoff/design-context.json
-handoff_hash: 894c42df867847bf67384e314d8958d2b0a2c136d385ba850ad5f04e6b69b6d2
+handoff_hash: 65feb53847b0ce4b110d8df920dc7fb73c4f90af7583a93d2b54ba94c319e363

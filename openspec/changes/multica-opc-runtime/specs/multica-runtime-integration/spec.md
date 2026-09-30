@@ -63,6 +63,10 @@ Pient SHALL provide actionable local diagnostics for connector installation, pro
 - **WHEN** activation cannot install or load the pinned connector
 - **THEN** Pient blocks Multica startup, explains the recovery step, and keeps ordinary local Pi chat usable
 
+#### Scenario: Connector version does not match
+- **WHEN** the installed connector source is not exactly `npm:@atoz-project/multica-pi-connector@0.10.0`
+- **THEN** Pient refuses to activate Multica until that exact source is installed or repaired and does not silently fall back to another version
+
 ### Requirement: Release readiness
 The Multica integration SHALL ship only after pinned-dependency, security, background-lifecycle, localized-UI, and real-device console task validation pass.
 

@@ -3,7 +3,7 @@
 - Change: multica-opc-runtime
 - Phase: design
 - Mode: compact
-- Context hash: 894c42df867847bf67384e314d8958d2b0a2c136d385ba850ad5f04e6b69b6d2
+- Context hash: 65feb53847b0ce4b110d8df920dc7fb73c4f90af7583a93d2b54ba94c319e363
 
 Generated-by: comet-handoff.sh
 
@@ -197,8 +197,8 @@ Full source: openspec/changes/multica-opc-runtime/design.md
 ## openspec/changes/multica-opc-runtime/specs/multica-runtime-integration/spec.md
 
 - Source: openspec/changes/multica-opc-runtime/specs/multica-runtime-integration/spec.md
-- Lines: 1-71
-- SHA256: b8d6e75fa97147ef0f031feca10557523c38f0a4b46181cab5bcb157251ec98c
+- Lines: 1-75
+- SHA256: 5d2961cb73be46c38cfe58a1f4c9a064b6a81c49d32069a2ba60e0af931b2645
 
 ```md
 ## ADDED Requirements
@@ -265,6 +265,10 @@ Pient SHALL provide actionable local diagnostics for connector installation, pro
 #### Scenario: Connector is missing or stale
 - **WHEN** activation cannot install or load the pinned connector
 - **THEN** Pient blocks Multica startup, explains the recovery step, and keeps ordinary local Pi chat usable
+
+#### Scenario: Connector version does not match
+- **WHEN** the installed connector source is not exactly `npm:@atoz-project/multica-pi-connector@0.10.0`
+- **THEN** Pient refuses to activate Multica until that exact source is installed or repaired and does not silently fall back to another version
 
 ### Requirement: Release readiness
 The Multica integration SHALL ship only after pinned-dependency, security, background-lifecycle, localized-UI, and real-device console task validation pass.
