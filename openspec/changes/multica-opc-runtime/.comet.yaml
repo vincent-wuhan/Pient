@@ -6,7 +6,7 @@ isolation: null
 verify_mode: null
 base_ref: 747414ae7d3d7d1bd507a0abc04939e8b7593a30
 design_doc: docs/superpowers/specs/2026-10-01-multica-opc-runtime-design.md
-plan: null
+plan: docs/superpowers/plans/2026-10-01-multica-opc-runtime.md
 verify_result: pending
 verification_report: null
 branch_status: pending
