@@ -1,0 +1,14 @@
+{
+  "change": "multica-opc-runtime",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "894c42df867847bf67384e314d8958d2b0a2c136d385ba850ad5f04e6b69b6d2",
+  "files": [
+    { "path": "openspec/changes/multica-opc-runtime/proposal.md", "sha256": "bc42bbed23de5140ed88e05a596c48a18a1f001af11b2f98dd3b56ad01b4f757" },
+    { "path": "openspec/changes/multica-opc-runtime/design.md", "sha256": "7b3d225e600788977a996b31c8262dd40926cc5a5981afafad92158d73f63aed" },
+    { "path": "openspec/changes/multica-opc-runtime/tasks.md", "sha256": "316c539bef1d755d8c41f8710b23dfaabd955b5ce8ca0a43c408fbad4bd59722" },
+    { "path": "openspec/changes/multica-opc-runtime/specs/multica-runtime-integration/spec.md", "sha256": "b8d6e75fa97147ef0f031feca10557523c38f0a4b46181cab5bcb157251ec98c" }
+  ]
+}
