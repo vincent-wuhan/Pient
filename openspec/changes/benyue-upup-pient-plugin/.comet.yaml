@@ -1,8 +1,8 @@
 workflow: full
 phase: build
-build_mode: null
+build_mode: executing-plans
 build_pause: null
-isolation: null
+isolation: branch
 verify_mode: null
 base_ref: d543877bb2a928188cf21ec10e2acf95da83656c
 design_doc: docs/superpowers/specs/2026-10-07-upup-pient-plugin-design.md
