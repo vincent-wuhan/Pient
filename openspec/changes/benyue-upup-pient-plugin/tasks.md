@@ -26,6 +26,6 @@
 
 ## 5. Release Gates
 
-- [ ] 5.1 Run plugin tests, typecheck, packaging checks, OpenSpec strict validation, and repository-required Android tests where affected.
+- [x] 5.1 Run plugin tests, typecheck, packaging checks, OpenSpec strict validation, and repository-required Android tests where affected.
 - [ ] 5.2 Publish an exact versioned npm package only after legal review, supply-chain inspection, package audit, and signed artifact/hash evidence are complete.
-- [ ] 5.3 Record known functional gaps and the phased roadmap for industry, portfolio, backtesting, multi-perspective research, monitoring, and automation capabilities.
+- [x] 5.3 Record known functional gaps and the phased roadmap for industry, portfolio, backtesting, multi-perspective research, monitoring, and automation capabilities.

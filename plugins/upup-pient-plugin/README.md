@@ -52,3 +52,28 @@ npm run package:check
 ```
 
 Tests use fixtures and do not contact live providers.
+
+## Troubleshooting
+
+- **`UPUP_TUSHARE_TOKEN is not configured`**: set the token only in the Pi
+  process environment, then restart/reload Pi. Do not paste it into chat.
+- **Provider timeout or invalid payload**: retry later; the plugin does not
+  fabricate data. Check Pient network access and provider status.
+- **Tool is absent after install**: run Pi reload or restart the Pient guest,
+  then verify `pi list` shows the exact package source.
+- **A-share fundamentals/news unavailable**: confirm the six-digit A-share
+  symbol and Tushare token permissions/points. HK and US snapshot coverage is
+  more limited in Phase 1.
+
+## Phase 1 gaps and roadmap
+
+Phase 1 intentionally omits UpUp's industry datasets, portfolio accounting,
+backtesting, forecasting, multi-perspective research, realtime monitoring, and
+automation. Those capabilities require separate data contracts, persistence,
+review, and safety design before mobile delivery. The phased roadmap is:
+
+1. full single-stock research data;
+2. research state and report generation;
+3. industry, fund, portfolio, and risk context;
+4. backtesting, forecasting, and multi-perspective research;
+5. realtime alternatives, monitoring, and release hardening.
