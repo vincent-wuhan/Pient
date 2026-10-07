@@ -27,6 +27,7 @@ android {
         targetSdk = 36
         versionCode = 2
         versionName = "0.1.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -70,6 +71,12 @@ android {
             // 否则只做 APK 内 mmap、磁盘上没有可执行文件。
             useLegacyPackaging = true
             keepDebugSymbols += setOf("**/libpient_*.so") // 这些不是真 .so，禁止 strip
+        }
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
         }
     }
 }
@@ -343,4 +350,17 @@ dependencies {
     implementation("org.apache.poi:poi-ooxml:5.2.3")
     implementation("org.apache.poi:poi-scratchpad:5.2.3")
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // 测试栈：Robolectric 覆盖 JVM 层 Android API / assets，MockWebServer 承载本地假模型端点。
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test:core:1.7.0")
+    testImplementation("androidx.test.ext:junit:1.3.0")
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+
+    // 模拟器冒烟：ActivityScenario 负责真实 Activity 生命周期，UI Automator 校验前台包。
+    androidTestImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }

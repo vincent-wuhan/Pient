@@ -1,0 +1,8 @@
+appId: com.pient.app
+name: Pient emulator smoke
+tags:
+  - smoke
+---
+- launchApp
+- assertNativeAppVisible:
+    appId: com.pient.app
