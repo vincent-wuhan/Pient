@@ -1,22 +1,22 @@
 ## 1. Foundation
 
-- [ ] 1.1 Create the `@benyue/upup-pient-plugin` package with `pi.extensions` and `pi.skills` manifests, license attribution, and plugin-local test scripts.
-- [ ] 1.2 Implement the shared Pi tool-result, error, schema, timeout, cancellation, output-budget, cache, and HTTPS allowlist infrastructure.
-- [ ] 1.3 Add the `upup-research` skill that enforces clarification, evidence collection, verification, risk, and citation phases.
+- [x] 1.1 Create the `@benyue/upup-pient-plugin` package with `pi.extensions` and `pi.skills` manifests, license attribution, and plugin-local test scripts.
+- [x] 1.2 Implement the shared Pi tool-result, error, schema, timeout, cancellation, output-budget, cache, and HTTPS allowlist infrastructure.
+- [x] 1.3 Add the `upup-research` skill that enforces clarification, evidence collection, verification, risk, and citation phases.
 
 ## 2. Investment Tools
 
-- [ ] 2.1 Implement `upup_market_snapshot` with market-aware symbol normalization, provider adapters, fixture tests, and bounded output.
-- [ ] 2.2 Implement `upup_stock_news` with result limits, timestamp normalization, empty handling, provider failures, and fixture tests.
-- [ ] 2.3 Implement `upup_financial_summary` with credential gating, reporting-period normalization, units, source limitations, and fixture tests.
-- [ ] 2.4 Implement `upup_screen_stocks` with deterministic presets, ranking, truncation, match counts, and fixture tests.
-- [ ] 2.5 Implement `upup_valuation_calculator` with DCF, multiples, peer comparison, sensitivity analysis, numeric guards, and deterministic tests.
+- [x] 2.1 Implement `upup_market_snapshot` with market-aware symbol normalization, provider adapters, fixture tests, and bounded output.
+- [x] 2.2 Implement `upup_stock_news` with result limits, timestamp normalization, empty handling, provider failures, and fixture tests.
+- [x] 2.3 Implement `upup_financial_summary` with credential gating, reporting-period normalization, units, source limitations, and fixture tests.
+- [x] 2.4 Implement `upup_screen_stocks` with deterministic presets, ranking, truncation, match counts, and fixture tests.
+- [x] 2.5 Implement `upup_valuation_calculator` with DCF, multiples, peer comparison, sensitivity analysis, numeric guards, and deterministic tests.
 
 ## 3. Security and Mobile Safety
 
-- [ ] 3.1 Verify credential confinement, secret-free errors, host allowlisting, bounded concurrency, cancellation, and timeout behavior with automated tests.
-- [ ] 3.2 Verify no UpUp MCP, Bun daemon, resident child process, Playwright, trading, filesystem-write, or arbitrary-shell capability is introduced.
-- [ ] 3.3 Add package documentation covering exact installation, credentials, available tools, capability boundaries, troubleshooting, attribution, and rollback.
+- [x] 3.1 Verify credential confinement, secret-free errors, host allowlisting, bounded concurrency, cancellation, and timeout behavior with automated tests.
+- [x] 3.2 Verify no UpUp MCP, Bun daemon, resident child process, Playwright, trading, filesystem-write, or arbitrary-shell capability is introduced.
+- [x] 3.3 Add package documentation covering exact installation, credentials, available tools, capability boundaries, troubleshooting, attribution, and rollback.
 
 ## 4. Pient Integration
 
