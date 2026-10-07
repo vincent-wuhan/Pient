@@ -1,0 +1,17 @@
+{
+  "change": "benyue-upup-pient-plugin",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "8bc3f674032897da3e11813089614dc60754548b4f26e64cce8269b4bea3e9a2",
+  "files": [
+    { "path": "openspec/changes/benyue-upup-pient-plugin/proposal.md", "sha256": "8b2883a2466f6e60a92bcee2caa683574c9f91086eb37f8bd2af150dbfdc57b0" },
+    { "path": "openspec/changes/benyue-upup-pient-plugin/design.md", "sha256": "14fa937b1b46074c2177b3256db71c687917a0a06a930806a57c5ff466ec95d2" },
+    { "path": "openspec/changes/benyue-upup-pient-plugin/tasks.md", "sha256": "b89a9cf6b4fb564add3aa33897ba8e21db8fee6764a278a2647c7051bdb00b98" },
+    { "path": "openspec/changes/benyue-upup-pient-plugin/specs/upup-investment-tools/spec.md", "sha256": "dc73919f78461de8ede711c0b3fa2ff5ed06b5df87f842c9279656784da2c3b1" },
+    { "path": "openspec/changes/benyue-upup-pient-plugin/specs/upup-mobile-security/spec.md", "sha256": "569119fd8d09b719010ac7cefc489904dd001af51ec75e99f2eda0a77d72de22" },
+    { "path": "openspec/changes/benyue-upup-pient-plugin/specs/upup-pi-package/spec.md", "sha256": "009acdecf4b869e545b2f7fe0c04d9cab45b7f0b43edf91f19a22719b39c3046" },
+    { "path": "openspec/changes/benyue-upup-pient-plugin/specs/upup-research-workflow/spec.md", "sha256": "dee8fcd2014df5cc506f9aa7d5ed099532dda1b8535bbc741c7a90e3396ecd9f" }
+  ]
+}

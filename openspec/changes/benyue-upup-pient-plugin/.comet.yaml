@@ -1,11 +1,11 @@
 workflow: full
-phase: design
+phase: build
 build_mode: null
 build_pause: null
 isolation: null
 verify_mode: null
 base_ref: d543877bb2a928188cf21ec10e2acf95da83656c
-design_doc: null
+design_doc: docs/superpowers/specs/2026-10-07-upup-pient-plugin-design.md
 plan: null
 verify_result: pending
 verification_report: null
@@ -13,3 +13,5 @@ branch_status: pending
 created_at: 2026-10-07
 verified_at: null
 archived: false
+handoff_context: openspec/changes/benyue-upup-pient-plugin/.comet/handoff/design-context.json
+handoff_hash: 8bc3f674032897da3e11813089614dc60754548b4f26e64cce8269b4bea3e9a2
