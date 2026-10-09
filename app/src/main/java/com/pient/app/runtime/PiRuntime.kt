@@ -707,7 +707,9 @@ object PiRuntime {
                 context.assets.open(UPUP_ARCHIVE_ASSET).use { input ->
                     tar.outputStream().use { input.copyTo(it) }
                 }
-                val cmd = "gunzip -c ${tar.absolutePath} | tar -x -C ${dir.parentFile?.absolutePath}"
+                // 归档顶层是 benyue-upup-pient-plugin/，剥掉后直接落成 .pient-preload/upup/
+                val cmd = "mkdir -p ${dir.absolutePath} && gunzip -c ${tar.absolutePath} | " +
+                    "tar -x --strip-components=1 -C ${dir.absolutePath}"
                 val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
                     .redirectErrorStream(true)
                     .start()
