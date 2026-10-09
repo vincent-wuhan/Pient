@@ -228,11 +228,23 @@ val writePientRuntimeLibsManifest = tasks.register("writePientRuntimeLibsManifes
     doLast {
         val f = pientRuntimeLibsManifest.get().asFile
         f.parentFile.mkdirs()
-        val libFiles = (pientRootfsLibDir.listFiles() ?: emptyArray()).toList()
-        val lines = libFiles
-            .filter { it.isFile && (it.name.endsWith(".so") || it.name.contains(".so.")) }
-            .sortedBy { it.name }
-            .map { "${it.name} ${pientJniLibName(it.name)}" }
+        // 链接名必须取 ELF 的 DT_SONAME（loader 实际查找的名字），不能取文件名：
+        // libtalloc.so.2.5.0 的 SONAME 是 libtalloc.so.2，用文件名会让设备端
+        // ensureLinks 建错链 → proot "cannot link executable: libtalloc.so.2 not found"。
+        // deb 的 SONAME 软链在打包进 jniLibs 时已丢（只收 lib*.so 实文件），只能读 ELF 还原。
+        val proc = ProcessBuilder(
+            "python3",
+            rootProject.layout.projectDirectory.file("runtime/scripts/elf_soname.py").asFile.absolutePath,
+            pientRootfsLibDir.absolutePath,
+        ).redirectErrorStream(true).start()
+        val out = proc.inputStream.bufferedReader().readLines()
+        val code = proc.waitFor()
+        if (code != 0) throw GradleException("elf_soname.py 退出码 $code：${out.joinToString("\n").take(500)}")
+        val lines = out.filter { it.isNotBlank() }.map { line ->
+            val (soname, fileName) = line.split(" ", limit = 2)
+            "$soname ${pientJniLibName(fileName)}"
+        }
+        require(lines.isNotEmpty()) { "运行时库映射表为空：${pientRootfsLibDir} 内无共享库" }
         f.writeText(lines.joinToString("\n") + "\n")
         println("pient 运行时库映射表：${lines.size} 项 → ${f.absolutePath}")
     }
