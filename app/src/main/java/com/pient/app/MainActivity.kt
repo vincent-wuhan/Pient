@@ -71,6 +71,10 @@ class MainActivity : ComponentActivity() {
         PiRuntime.ensureRootfsAsync(this)
         // 预置的 pi 包解进 Ubuntu（rootfs 未就绪时立即返回，由解包完成后的链式调用接手）
         PiRuntime.ensurePiAsync(this)
+        // 完整版预置：Node.js 运行时解进 /usr/local；三件套（rootfs/pi/node）就绪后自动
+        // pi install upup 插件（归档不随包时两者都是空操作，即普通版行为不变）
+        PiRuntime.ensureNodeAsync(this)
+        PiRuntime.ensureUpupPreloadAsync(this)
         // Android shell 回桥：guest 里的 pi 工具要执行 Android 命令时，
         // 经 loopback 回到应用执行（Shizuku 的 binder 只在 Java 侧可达）。起在应用启动，
         // 端点文件每次请求都会刷新（档位/授权变化后无需重启 pi）。

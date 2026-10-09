@@ -250,6 +250,46 @@ val writePientRuntimeLibsManifest = tasks.register("writePientRuntimeLibsManifes
     }
 }
 
+// ─────────────── 完整版预置：Node.js 运行时 + upup 垂域插件 ───────────────
+// pi 是 node 应用但 node 不随包的话首启必须联网走 NodeSource——「装完即用」口径下
+// 把官方 v22（>=22.19）二进制一并打进 assets，首启解到 guest /usr/local/。
+// node 官方二进制用 arm64 命名（非 Debian 的 aarch64），与 rootfs ABI 名做一次映射
+val pientNodeArch = when (pientRootfsAbi) {
+    "aarch64" -> "arm64"
+    else -> pientRootfsAbi
+}
+val pientNodeArchive = File(
+    rootProject.layout.projectDirectory.asFile,
+    "runtime/cache/node/node-linux-$pientNodeArch.tgz",
+)
+val syncPientNodeArchive = tasks.register<Copy>("syncPientNodeArchive") {
+    description = "把 Node.js v22 二进制放进 assets（pi 的运行时前提，首启解到 /usr/local）"
+    doFirst {
+        if (!pientNodeArchive.isFile) {
+            throw GradleException(
+                "终端层缓存缺少 Node.js 归档：${pientNodeArchive.absolutePath}\n" +
+                    "  先拉取：python runtime/scripts/fetch_node.py --abi $pientNodeArch",
+            )
+        }
+    }
+    from(pientNodeArchive) { rename { "pient-node.tgz" } }
+    into(layout.buildDirectory.dir("generated/pientAssets"))
+}
+
+// upup 插件自包含包（包内 node_modules 带 SDK/typebox，pi install 本地路径无需 registry）
+val pientUpupArchive = layout.buildDirectory.file("generated/pientAssets/pient-upup.tgz")
+val packPientUpupArchive = tasks.register<Exec>("packPientUpupArchive") {
+    description = "把 monorepo 的 upup 插件打成自包含 assets 归档（首启 pi install 预装）"
+    outputs.file(pientUpupArchive)
+    commandLine(
+        "python3",
+        rootProject.layout.projectDirectory.file("runtime/scripts/pack_upup_asset.py").asFile.absolutePath,
+        "--monorepo",
+        rootProject.providers.gradleProperty("pient.upupMonorepo").getOrElse("../../android-pinet-plugin"),
+        "--out", pientUpupArchive.get().asFile.absolutePath,
+    )
+}
+
 /** 终端层的依赖库（PRoot 的 libtalloc / libandroid-shmem）随包 */
 val syncPientRuntimeLibs = tasks.register<Copy>("syncPientRuntimeLibs") {
     description = "把 PRoot 的动态依赖以 libpient_*.so 形式放入 jniLibs 目录"
@@ -298,6 +338,7 @@ tasks.named("preBuild") {
         syncPientTerminalBinaries, syncPientRootfsArchive,
         syncPientRuntimeLibs, writePientRuntimeLibsManifest,
         syncPientPiArchive,
+        syncPientNodeArchive, packPientUpupArchive,
     )
     // 切 ABI 时清掉上一次构建留在 jniLibs 源目录里的另一套 ABI（jniLibs 源是整个
     // build/pientJniLibs，不清就会 fat 出包：arm64 包里会混进 x86_64 的 proot/loader）

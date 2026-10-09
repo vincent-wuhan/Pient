@@ -81,11 +81,11 @@ object PiRpc {
     /** 通道**此刻真的在跑**（可用 ≠ 在跑：usable 还含「能起来」）。用于「要不要为换工作区重启它」。 */
     fun running(): Boolean = process?.isAlive == true
 
-    /** 通道可用 = 在跑，或**能起来**（rootfs + 预置 pi 都在）。 */
+    /** 通道可用 = 在跑，或**能起来**（rootfs + 预置 pi 都在；node 随包时还要求 node 已解）。 */
     fun usable(): Boolean {
         process?.let { if (it.isAlive) return true }
         val ctx = AppCtx.get() ?: return false
-        return PiRuntime.rootfsReady(ctx) && PiRuntime.piReady(ctx)
+        return PiRuntime.rootfsReady(ctx) && PiRuntime.piReady(ctx) && PiRuntime.nodeUsable(ctx)
     }
 
     /**
@@ -134,7 +134,7 @@ object PiRpc {
         configDirty = false   // 无论走哪条路，这次启动之后读到的都是新文件
         stop()
         val ctx = AppCtx.get() ?: return false
-        if (!PiRuntime.rootfsReady(ctx) || !PiRuntime.piReady(ctx)) {
+        if (!PiRuntime.rootfsReady(ctx) || !PiRuntime.piReady(ctx) || !PiRuntime.nodeUsable(ctx)) {
             _state.value = PiRpcState.Failed(L.runtime.rpcNotReady)
             return false
         }

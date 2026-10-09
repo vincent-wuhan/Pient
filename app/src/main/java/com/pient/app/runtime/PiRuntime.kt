@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.system.Os
 import com.pient.app.data.PientLog
+import com.pient.app.data.PiAgentFiles
 import java.io.File
 
 /**
@@ -229,7 +230,10 @@ object PiRuntime {
                     "arch=${elfMachine(rootfsBash(context))}（本机 ${hostMachine()}）",
             )
             onProgress(1f, if (ok) L.runtime.unpackDone else L.runtime.unpackNoBash)
-            if (ok) ensurePiAsync(context)      // rootfs 一就绪就把预置的 pi 铺进 npm 全局位置
+            if (ok) {
+                ensurePiAsync(context)      // rootfs 一就绪就把预置的 pi 铺进 npm 全局位置
+                ensureNodeAsync(context)    // 完整版：node 也随包，一并铺进 /usr/local
+            }
             return ok
         } catch (e: Exception) {
             PientLog.w(TAG, "解包异常：${e.message}")
@@ -436,6 +440,8 @@ object PiRuntime {
         ExecBridge.writeEndpointFile(context)
         ensureRootfsAsync(context)
         ensurePiAsync(context)      // rootfs 未就绪时它会直接返回，等解包完的链式调用再补
+        ensureNodeAsync(context)    // 同上：node 归档随包时的链式入口
+        ensureUpupPreloadAsync(context)
     }
 
     /**
@@ -574,10 +580,160 @@ object PiRuntime {
                 PientLog.w(TAG, "pi 解包异常：${e.message}")
             } finally {
                 piUnpacking = false
+                ensureUpupPreloadAsync(context)   // pi 就绪是预装的最后一环之一，顺手补一次
             }
         }.apply {
             isDaemon = true
             name = "pient-pi-unpack"
+        }.start()
+        return true
+    }
+
+    // ─────────────── 完整版预置：Node.js 运行时 + upup 垂域插件 ───────────────
+
+    /** 随包的 Node.js 归档（assets；构建期 `syncPientNodeArchive` 放进来，v22 >= 22.19） */
+    private const val NODE_ARCHIVE_ASSET = "pient-node.tgz"
+
+    /** 随包的 upup 插件自包含归档（构建期 `packPientUpupArchive` 生成，包内带 node_modules） */
+    private const val UPUP_ARCHIVE_ASSET = "pient-upup.tgz"
+
+    /** guest 里 node 的落点（node 官方 tar 去顶层后解到 /usr/local/） */
+    fun nodeBin(context: Context): File = File(rootfsDir(context), "usr/local/bin/node")
+
+    /** node 是否就绪（rootfs 已解 + node 可执行文件在） */
+    fun nodeReady(context: Context): Boolean = rootfsReady(context) && nodeBin(context).isFile
+
+    private fun nodeArchiveAvailable(context: Context): Boolean =
+        runCatching { context.assets.list("")?.contains(NODE_ARCHIVE_ASSET) == true }.getOrDefault(false)
+
+    /**
+     * pi 通道的 node 就绪判据：node 归档随包（完整版）→ 必须已解出；归档不随包（普通版）
+     * → 不设要求（维持用户在环境页手动装 NodeSource 的既有路径）。
+     */
+    fun nodeUsable(context: Context): Boolean =
+        !nodeArchiveAvailable(context) || nodeReady(context)
+
+    private fun upupArchiveAvailable(context: Context): Boolean =
+        runCatching { context.assets.list("")?.contains(UPUP_ARCHIVE_ASSET) == true }.getOrDefault(false)
+
+    @Volatile
+    private var nodeUnpacking = false
+
+    /**
+     * **首启把预置的 Node.js 解进 guest 的 /usr/local**（官方 tar 布局：bin/node、bin/npm、
+     * lib/node_modules/npm/…；`--strip-components=1` 去掉顶层版本目录）。
+     * rootfs 未就绪时返回 false，由解包完成的链式调用接手。node 是 pi 的运行前提，
+     * 没有它 pi 通道起不来（此前需用户在环境页联网装 NodeSource，完整版改为随包离线就绪）。
+     */
+    fun ensureNodeAsync(context: Context): Boolean {
+        if (nodeReady(context) || nodeUnpacking) return false
+        if (!rootfsReady(context)) return false
+        if (!nodeArchiveAvailable(context)) {
+            PientLog.w(TAG, "node 未预置，且 APK 未内置 $NODE_ARCHIVE_ASSET（非完整版包）")
+            return false
+        }
+        Thread {
+            nodeUnpacking = true
+            try {
+                val local = File(rootfsDir(context), "usr/local")
+                local.mkdirs()
+                val tar = File(tmpDir(context), NODE_ARCHIVE_ASSET)
+                tar.parentFile?.mkdirs()
+                context.assets.open(NODE_ARCHIVE_ASSET).use { input ->
+                    tar.outputStream().use { input.copyTo(it) }
+                }
+                // Android 侧 tar：硬链接条目会因 SELinux 被拒（与 rootfs 同款问题），
+                // 判据用 node 可执行文件在不在，不迷信退出码
+                val cmd = "cd ${local.absolutePath} && gunzip -c ${tar.absolutePath} | tar -x --strip-components=1"
+                val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = proc.inputStream.bufferedReader().readText()
+                val code = proc.waitFor()
+                if (code != 0) PientLog.w(TAG, "node 解包退出码 $code：${out.takeLast(200)}")
+                // umask 077 会把解出的文件压成 0600：node/npm/npx 及 npm 的 js 入口都必须 +x
+                val chmod = ProcessBuilder(
+                    "/system/bin/sh", "-c",
+                    "chmod -R a+rx ${local.absolutePath}/bin " +
+                        "${local.absolutePath}/lib/node_modules/npm/bin 2>/dev/null",
+                ).redirectErrorStream(true).start().also { it.waitFor() }
+                runCatching { tar.delete() }
+                PientLog.i(
+                    TAG,
+                    "node 预置完成 ok=${nodeReady(context)} exe=${nodeBin(context).canExecute()}",
+                )
+            } catch (e: Exception) {
+                PientLog.w(TAG, "node 解包异常：${e.message}")
+            } finally {
+                nodeUnpacking = false
+                ensureUpupPreloadAsync(context)   // node 就绪后补一次预装判定
+            }
+        }.apply {
+            isDaemon = true
+            name = "pient-node-unpack"
+        }.start()
+        return true
+    }
+
+    /** guest 里预装目录（upup 自包含包解到这，pi install 以本地路径源安装） */
+    private fun upupPreloadDir(context: Context): File =
+        File(rootfsDir(context), "root/.pient-preload/upup")
+
+    /** 预装幂等判据：pi 的用户设置里已登记 upup 预装源 */
+    private fun upupInstalled(context: Context): Boolean = runCatching {
+        File(PiAgentFiles.agentDir(context), "settings.json")
+            .readText().contains(".pient-preload/upup")
+    }.getOrDefault(false)
+
+    @Volatile
+    private var upupPreloading = false
+
+    /**
+     * **完整版：rootfs/pi/node 三者就绪后，把预置的 upup 插件装进 pi**。
+     * 流程 = 解 assets 归档到 `/root/.pient-preload/upup`，再 `pi install` 本地路径源
+     * （注册走 pi 自己的 settings.json 逻辑，与用户手动装完全同源，可 `pi remove` 卸载）。
+     * 幂等：settings.json 已含该源即跳过；失败只记日志不重试（插件页可手动补装）。
+     */
+    fun ensureUpupPreloadAsync(context: Context): Boolean {
+        if (upupPreloading || upupInstalled(context)) return false
+        if (!rootfsReady(context) || !piReady(context) || !nodeReady(context)) return false
+        if (!upupArchiveAvailable(context)) return false
+        Thread {
+            upupPreloading = true
+            try {
+                val dir = upupPreloadDir(context)
+                dir.parentFile?.mkdirs()
+                val tar = File(tmpDir(context), UPUP_ARCHIVE_ASSET)
+                context.assets.open(UPUP_ARCHIVE_ASSET).use { input ->
+                    tar.outputStream().use { input.copyTo(it) }
+                }
+                val cmd = "gunzip -c ${tar.absolutePath} | tar -x -C ${dir.parentFile?.absolutePath}"
+                val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = proc.inputStream.bufferedReader().readText()
+                val code = proc.waitFor()
+                runCatching { tar.delete() }
+                if (code != 0 || !File(dir, "package.json").isFile) {
+                    PientLog.w(TAG, "upup 预装包解包失败（$code）：${out.takeLast(200)}")
+                    return@Thread
+                }
+                // 经 pi 自己的安装路径注册（与用户手动装同源）；runPi 是 suspend，桥接一次
+                val (rc, piOut) = kotlinx.coroutines.runBlocking {
+                    PiPackages.runPi(context, "install /root/.pient-preload/upup", 180_000)
+                }
+                PientLog.i(
+                    TAG,
+                    "upup 预装完成 rc=$rc installed=${upupInstalled(context)}：${piOut.takeLast(200)}",
+                )
+            } catch (e: Exception) {
+                PientLog.w(TAG, "upup 预装异常：${e.message}")
+            } finally {
+                upupPreloading = false
+            }
+        }.apply {
+            isDaemon = true
+            name = "pient-upup-preload"
         }.start()
         return true
     }
