@@ -679,10 +679,10 @@ object PiRuntime {
     private fun upupPreloadDir(context: Context): File =
         File(rootfsDir(context), "root/.pient-preload/upup")
 
-    /** 预装幂等判据：pi 的用户设置里已登记 upup 预装源 */
+    /** 预装幂等判据：pi 的用户设置里已登记 upup 预装源（pi 写 JSON 会转义斜杠 `\/`，按段匹配） */
     private fun upupInstalled(context: Context): Boolean = runCatching {
         File(PiAgentFiles.agentDir(context), "settings.json")
-            .readText().contains(".pient-preload/upup")
+            .readText().replace("\\\\/", "/").contains(".pient-preload/upup")
     }.getOrDefault(false)
 
     @Volatile
