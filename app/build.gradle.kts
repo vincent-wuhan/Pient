@@ -294,6 +294,40 @@ val packPientUpupArchive = tasks.register<Exec>("packPientUpupArchive") {
     )
 }
 
+// multica-cli（multica-ai/multica 的设备端 CLI，聊天控制通道）：Go 单二进制，
+// 同 node 一样重打包成 .tgz 放 assets（.tar.gz 会被 aapt 自动解压去后缀）
+val pientMulticaArchive = File(
+    rootProject.layout.projectDirectory.asFile,
+    "runtime/cache/multica/multica-cli.tgz",
+)
+val syncPientMulticaCli = tasks.register<Copy>("syncPientMulticaCli") {
+    description = "把 multica-cli 二进制归档放进 assets（multica 聊天控制通道的设备端 CLI）"
+    doFirst {
+        if (!pientMulticaArchive.isFile) {
+            throw GradleException(
+                "终端层缓存缺少 multica-cli 归档：${pientMulticaArchive.absolutePath}\n" +
+                    "  先拉取：python runtime/scripts/fetch_multica.py",
+            )
+        }
+    }
+    from(pientMulticaArchive) { rename { "pient-multica-cli.tgz" } }
+    into(layout.buildDirectory.dir("generated/pientAssets"))
+}
+
+// pi-teamwork（@amaster.ai/pi-teamwork，multica 聊天控制的 teamwork 侧插件）：
+// npm 依赖闭包自包含包。⚠️ Exec 的 cwd 是 app/ 模块目录，相对路径会指错地方 ——
+// 传给脚本的参数一律用绝对路径。
+val pientPiteamworkArchive = layout.buildDirectory.file("generated/pientAssets/pient-piteamwork.tgz")
+val packPientPiteamwork = tasks.register<Exec>("packPientPiteamwork") {
+    description = "把 @amaster.ai/pi-teamwork 打成自包含 assets 归档（multica 聊天控制通道预置）"
+    outputs.file(pientPiteamworkArchive)
+    commandLine(
+        "python3",
+        rootProject.layout.projectDirectory.file("runtime/scripts/pack_piteamwork_asset.py").asFile.absolutePath,
+        "--out", pientPiteamworkArchive.get().asFile.absolutePath,
+    )
+}
+
 // 免配置预置（runtime/preset/*.json 在则打包，缺失则跳过=普通版；含 key 故不入库）
 val syncPientPresetConfig = tasks.register<Copy>("syncPientPresetConfig") {
     description = "把免配置预置（pi 服务商/密钥/默认模型）放进 assets（文件存在才打包）"
@@ -351,6 +385,7 @@ tasks.named("preBuild") {
         syncPientRuntimeLibs, writePientRuntimeLibsManifest,
         syncPientPiArchive,
         syncPientNodeArchive, packPientUpupArchive,
+        syncPientMulticaCli, packPientPiteamwork,
         syncPientPresetConfig,
     )
     // 切 ABI 时清掉上一次构建留在 jniLibs 源目录里的另一套 ABI（jniLibs 源是整个
