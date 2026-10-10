@@ -224,6 +224,41 @@ object PiAgentFiles {
         return configs to keys
     }
 
+    /**
+     * 读 APK 预置的「免配置」服务商（assets 的 pient-models-default.json / pient-auth-default.json，
+     * 由 runtime/preset 构建期打包；不随包返回 null）。解析口径与 [read] 完全一致。
+     */
+    fun readPreset(context: Context): Pair<Map<String, ProviderConfig>, Map<String, String>>? {
+        val configs = LinkedHashMap<String, ProviderConfig>()
+        val keys = LinkedHashMap<String, String>()
+        runCatching {
+            val models = context.assets.open("pient-models-default.json")
+                .use { JSONObject(it.readBytes().toString(Charsets.UTF_8)) }
+            models.optJSONObject("providers")?.let { providers ->
+                for (id in providers.keys()) {
+                    val pj = providers.optJSONObject(id) ?: continue
+                    configs[id] = ProviderConfig(
+                        providerId = id,
+                        endpoint = pj.optString("baseUrl", ""),
+                        apiType = pj.optString("api", ""),
+                        apiKey = "",
+                        modelList = buildModelList(pj.optJSONArray("models"), null),
+                        modelSettings = modelSettingsOf(pj.optJSONArray("models")),
+                    )
+                }
+            }
+            context.assets.open("pient-auth-default.json").use {
+                JSONObject(it.readBytes().toString(Charsets.UTF_8))
+            }.let { auth ->
+                for (id in auth.keys()) {
+                    val key = auth.optJSONObject(id)?.optString("key", "").orEmpty()
+                    if (key.isNotBlank()) keys[id] = key
+                }
+            }
+        }.onFailure { return null }   // 普通版（assets 无预置）或解析失败 → null
+        return configs to keys
+    }
+
     // ─────────────────────────── 内部 ───────────────────────────
 
     /**

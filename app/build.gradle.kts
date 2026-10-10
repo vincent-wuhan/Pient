@@ -59,6 +59,10 @@ android {
     buildFeatures {
         compose = true
     }
+    lint {
+        // release 的 lintVital 需联网拉 lint 工具链（kotlin-compiler 等），镜像环境直接跳过
+        checkReleaseBuilds = false
+    }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         jniLibs {
@@ -290,6 +294,14 @@ val packPientUpupArchive = tasks.register<Exec>("packPientUpupArchive") {
     )
 }
 
+// 免配置预置（runtime/preset/*.json 在则打包，缺失则跳过=普通版；含 key 故不入库）
+val syncPientPresetConfig = tasks.register<Copy>("syncPientPresetConfig") {
+    description = "把免配置预置（pi 服务商/密钥/默认模型）放进 assets（文件存在才打包）"
+    from(rootProject.layout.projectDirectory.dir("runtime/preset"))
+    include("pient-*-default.json")
+    into(layout.buildDirectory.dir("generated/pientAssets"))
+}
+
 /** 终端层的依赖库（PRoot 的 libtalloc / libandroid-shmem）随包 */
 val syncPientRuntimeLibs = tasks.register<Copy>("syncPientRuntimeLibs") {
     description = "把 PRoot 的动态依赖以 libpient_*.so 形式放入 jniLibs 目录"
@@ -339,6 +351,7 @@ tasks.named("preBuild") {
         syncPientRuntimeLibs, writePientRuntimeLibsManifest,
         syncPientPiArchive,
         syncPientNodeArchive, packPientUpupArchive,
+        syncPientPresetConfig,
     )
     // 切 ABI 时清掉上一次构建留在 jniLibs 源目录里的另一套 ABI（jniLibs 源是整个
     // build/pientJniLibs，不清就会 fat 出包：arm64 包里会混进 x86_64 的 proot/loader）

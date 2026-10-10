@@ -62,3 +62,6 @@ node_modules/
 runtime/cache/
 # Isolated Git worktrees managed by Codex
 .worktrees/
+
+# ===== 免配置预置（含真实 API key，本地保留不入库；构建时打进 APK assets） =====
+runtime/preset/*.json

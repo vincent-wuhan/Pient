@@ -210,6 +210,12 @@ object ProviderCatalog {
      * 多 api 的家（网关/代理类）列出多个；其余只有一个默认值。
      */
     private val API_SETS: Map<String, List<String>> = mapOf(
+        // custom 是网关/自建端点的主场景（一个 URL 多协议），给全协议候选——
+        // 只给 openai-completions 会让 anthropic 兼容网关（如 sub2api）没法在 UI 里选中
+        "custom" to listOf(
+            "openai-completions", "openai-responses", "anthropic-messages",
+            "google-generative-ai", "azure-openai-responses",
+        ),
         "fireworks" to listOf("anthropic-messages", "openai-completions"),
         "github-copilot" to listOf("anthropic-messages", "openai-completions", "openai-responses"),
         "opencode" to listOf("anthropic-messages", "google-generative-ai", "openai-completions", "openai-responses"),

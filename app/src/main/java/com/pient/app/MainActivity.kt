@@ -61,6 +61,10 @@ class MainActivity : ComponentActivity() {
         // 放在解包 / 前台服务 / 回桥之前：后面几步的日志都要进文件。
         PientLog.install(this)
 
+        // 免配置版：assets 带 pient-*-default.json 时预置服务商/密钥/默认模型。
+        // 必须在 Compose 读盘（ChatStore.load）之前跑，首启即生效；目标已存在则不覆盖。
+        PiRuntime.installPresetConfig(this)
+
         // 后台常驻通知（行为设置）：开着就在每次启动时把常驻档重新挂上
         //（进程被杀 / 换包后常驻通知要自己回来；关着则什么都不做，维持按需前台化）。
         if (SettingsStore.residentNotification) {

@@ -506,6 +506,24 @@ object PiRuntime {
         false
     }
 
+    /**
+     * **免配置预置（state 部分）**：默认模型选择与思考档位。服务商/密钥的预置不走文件层——
+     * 首启窗口存在多写入者（pi 归一化 / 迁移 / 统一落盘），文件会被覆盖；那部分由
+     * `AiConfigStore.load` 在读盘为空时从 assets 注入（见 [PiAgentFiles.readPreset]）。
+     * 幂等且不越权：目标文件已存在一律跳过。
+     */
+    fun installPresetConfig(context: Context) {
+        val target = File(context.filesDir, "pient_data/state.json")
+        runCatching {
+            val text = context.assets.open("pient-state-default.json")
+                .use { it.readBytes().toString(Charsets.UTF_8) }
+            if (target.isFile) return   // 用户已有状态，绝不覆盖
+            target.parentFile?.mkdirs()
+            target.writeText(text)
+            PientLog.i(TAG, "免配置预置已落盘：${target.absolutePath}")
+        }
+    }
+
     /** pi 的版本（读解出来的 package.json；读不到返回空串） */
     fun piVersion(context: Context): String = runCatching {
         Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")

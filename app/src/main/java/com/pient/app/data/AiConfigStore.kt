@@ -187,7 +187,19 @@ object AiConfigStore {
 
     fun load(context: Context) {
         try {
-            val (fromPi, keys) = PiAgentFiles.read(context)
+            var (fromPi, keys) = PiAgentFiles.read(context)
+            // 免配置版：pi 侧还没有任何服务商（全新安装）且 assets 带预置 → 把预置当
+            // 「出厂默认」填进 configs，后续 save 走官方单写路径落盘（绕开文件层多写
+            // 者竞争：首启窗口里 pi/迁移逻辑可能重写 models.json，直接写文件会被覆盖）。
+            if (fromPi.isEmpty()) {
+                PiAgentFiles.readPreset(context)?.let { (p, k) ->
+                    if (p.isNotEmpty()) {
+                        fromPi = p
+                        keys = k
+                        aiConfigured = true
+                    }
+                }
+            }
             if (fromPi.isEmpty() && legacyFile(context).isFile) {
                 // ① 首次运行 / 迁移：旧的 ai_config.json 里还带着完整服务商配置
                 if (migrateFromLegacy(context)) return
@@ -198,7 +210,7 @@ object AiConfigStore {
             syncOrder(providerOrder.toList())
             normalizeGlobals()
         } catch (e: Exception) {
-            // 配置损坏：忽略（按未配置处理）
+            android.util.Log.w("AiConfig", "load 异常（按未配置处理）", e)
         }
     }
 
