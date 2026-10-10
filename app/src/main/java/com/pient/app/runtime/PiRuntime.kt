@@ -513,14 +513,19 @@ object PiRuntime {
      * 幂等且不越权：目标文件已存在一律跳过。
      */
     fun installPresetConfig(context: Context) {
-        val target = File(context.filesDir, "pient_data/state.json")
-        runCatching {
-            val text = context.assets.open("pient-state-default.json")
-                .use { it.readBytes().toString(Charsets.UTF_8) }
-            if (target.isFile) return   // 用户已有状态，绝不覆盖
-            target.parentFile?.mkdirs()
-            target.writeText(text)
-            PientLog.i(TAG, "免配置预置已落盘：${target.absolutePath}")
+        val targets = listOf(
+            "pient-state-default.json" to File(context.filesDir, "pient_data/state.json"),
+            "pient-env-default.json" to pluginEnvFile(context),
+        )
+        for ((asset, target) in targets) {
+            runCatching {
+                val text = context.assets.open(asset)
+                    .use { it.readBytes().toString(Charsets.UTF_8) }
+                if (target.isFile) return@runCatching   // 用户已有配置，绝不覆盖
+                target.parentFile?.mkdirs()
+                target.writeText(text)
+                PientLog.i(TAG, "免配置预置已落盘：${target.absolutePath}")
+            }
         }
     }
 
@@ -758,13 +763,34 @@ object PiRuntime {
         return true
     }
 
+    /**
+     * **插件环境变量**文件（`files/pient_data/plugin_env.json`，键值对 JSON）：
+     * 桌面 pi 靠 `export` 注入（如 UPUP_TUSHARE_TOKEN）；Pient 的 pi 进程环境是
+     * [environment] 拼的固定集，插件拿不到任何用户配置 —— 本文件就是那条注入通道，
+     * 值随 guest env 进 pi 进程（插件的 ctx.env 可读）。配置入口：设置 → 数据源配置。
+     */
+    fun pluginEnvFile(context: Context): File =
+        File(context.filesDir, "pient_data/plugin_env.json")
+
+    /** 读插件环境变量；文件缺失/损坏返回空（解析失败按空处理，不阻断通道） */
+    fun pluginEnv(context: Context): Map<String, String> = runCatching {
+        val text = pluginEnvFile(context).readText()
+        val obj = org.json.JSONObject(text)
+        buildMap {
+            for (k in obj.keys()) {
+                val v = obj.optString(k, "")
+                if (v.isNotBlank() && System.getenv(k) == null) put(k, v)
+            }
+        }
+    }.getOrDefault(emptyMap())
+
     fun environment(context: Context): Map<String, String> = mapOf(
         "LD_LIBRARY_PATH" to libDir(context).absolutePath,
         "PATH" to "${linkDir(context).absolutePath}:" +
             System.getenv("PATH").orEmpty().ifEmpty { "/system/bin:/system/xbin" },
         "HOME" to File(root(context), "home").absolutePath,
         "TMPDIR" to tmpDir(context).absolutePath,
-    )
+    ) + pluginEnv(context)
 
     /**
      * **应用内部**调用 guest 时的环境变量：强制 Ubuntu（PRoot）。

@@ -44,6 +44,15 @@ interface SettingsStrings {
     val projectManagementSubtitle: String
     val usage: String
     val usageSubtitle: String
+    val dataSources: String
+    val dataSourcesSubtitle: String
+    val dataSourceTushareTitle: String
+    val dataSourceTushareHint: String
+    val dataSourceTusharePlaceholder: String
+    val dataSourceSave: String
+    val dataSourceSaved: String
+    val dataSourceRegister: String
+    val dataSourcePointsHint: String
     val groupAbout: String
     val aboutSubtitle: String
     fun versionLabel(a0: Any?): String
@@ -207,6 +216,15 @@ object ZhSettings : SettingsStrings {
     override val projectManagementSubtitle: String = "项目与会话记录"
     override val usage: String = "模型用量信息"
     override val usageSubtitle: String = "Token 与成本统计"
+    override val dataSources: String = "数据源配置"
+    override val dataSourcesSubtitle: String = "行情与财务数据 Token（Tushare）"
+    override val dataSourceTushareTitle: String = "Tushare Token"
+    override val dataSourceTushareHint: String = "配置后 AI 可通过 upup 工具读取 A 股行情、财报摘要与选股筛选数据；未配置时相关工具会返回配置指引。Token 仅注入本地 pi 进程环境，不会上传。"
+    override val dataSourceTusharePlaceholder: String = "粘贴 tushare.pro 的 API Token"
+    override val dataSourceSave: String = "保存"
+    override val dataSourceSaved: String = "已保存，下一轮对话生效"
+    override val dataSourceRegister: String = "申请 Token（注册 tushare.pro）"
+    override val dataSourcePointsHint: String = "注册即送基础积分；2000 积分解锁财报与筛选接口（完善资料、绑定公众号可快速获取）。"
     override val groupAbout: String = "关于Pient"
     override val aboutSubtitle: String = "版本与产品信息"
     override fun versionLabel(a0: Any?): String = "版本 ${a0}"
@@ -366,6 +384,15 @@ object EnSettings : SettingsStrings {
     override val projectManagementSubtitle: String = "Projects & sessions"
     override val usage: String = "Model usage"
     override val usageSubtitle: String = "Token & cost stats"
+    override val dataSources: String = "Data sources"
+    override val dataSourcesSubtitle: String = "Market & financial data token (Tushare)"
+    override val dataSourceTushareTitle: String = "Tushare token"
+    override val dataSourceTushareHint: String = "Once set, the AI can read A-share quotes, earnings summaries and stock screening via upup tools; without it those tools return setup guidance. The token stays in the local pi process environment and is never uploaded."
+    override val dataSourceTusharePlaceholder: String = "Paste your tushare.pro API token"
+    override val dataSourceSave: String = "Save"
+    override val dataSourceSaved: String = "Saved — takes effect on the next message"
+    override val dataSourceRegister: String = "Get a token (register at tushare.pro)"
+    override val dataSourcePointsHint: String = "Registration grants base points; 2000 points unlock earnings and screening APIs (complete your profile and bind WeChat to earn faster)."
     override val groupAbout: String = "About Pient"
     override val aboutSubtitle: String = "Version & product info"
     override fun versionLabel(a0: Any?): String = "Version ${a0}"
