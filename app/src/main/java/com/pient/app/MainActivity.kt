@@ -79,6 +79,10 @@ class MainActivity : ComponentActivity() {
         // pi install upup 插件（归档不随包时两者都是空操作，即普通版行为不变）
         PiRuntime.ensureNodeAsync(this)
         PiRuntime.ensureUpupPreloadAsync(this)
+        // multica-chat-control 预置链：multica CLI 解进 /usr/local/bin，三件套（rootfs/pi/multica）
+        // 就绪后自动 pi install piteamwork 插件（multica 归档不随包时两者都是空操作，普通版不受影响）
+        PiRuntime.ensureMulticaCliAsync(this)
+        PiRuntime.ensurePiteamworkPreloadAsync(this)
         // Android shell 回桥：guest 里的 pi 工具要执行 Android 命令时，
         // 经 loopback 回到应用执行（Shizuku 的 binder 只在 Java 侧可达）。起在应用启动，
         // 端点文件每次请求都会刷新（档位/授权变化后无需重启 pi）。

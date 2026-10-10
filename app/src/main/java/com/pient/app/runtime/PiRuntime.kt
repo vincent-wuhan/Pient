@@ -233,6 +233,7 @@ object PiRuntime {
             if (ok) {
                 ensurePiAsync(context)      // rootfs 一就绪就把预置的 pi 铺进 npm 全局位置
                 ensureNodeAsync(context)    // 完整版：node 也随包，一并铺进 /usr/local
+                ensureMulticaCliAsync(context)   // multica CLI 同款：rootfs 就绪即可解进 /usr/local/bin
             }
             return ok
         } catch (e: Exception) {
@@ -690,6 +691,7 @@ object PiRuntime {
             } finally {
                 nodeUnpacking = false
                 ensureUpupPreloadAsync(context)   // node 就绪后补一次预装判定
+                ensurePiteamworkPreloadAsync(context)   // piteamwork 预装同款：就绪条件可能已满足
             }
         }.apply {
             isDaemon = true
@@ -759,6 +761,141 @@ object PiRuntime {
         }.apply {
             isDaemon = true
             name = "pient-upup-preload"
+        }.start()
+        return true
+    }
+
+    // ─────────────── multica CLI + piteamwork 扩展（multica-chat-control 预置链） ───────────────
+
+    /** 随包的 multica CLI 归档（官方 tar 是扁平结构：成员直接就是 multica/LICENSE/…，无需 strip） */
+    private const val MULTICA_CLI_ASSET = "pient-multica-cli.tgz"
+
+    /** 随包的 piteamwork 插件归档（构建期打包，顶层是 piteamwork/） */
+    private const val PITEAMWORK_ASSET = "pient-piteamwork.tgz"
+
+    /** guest 里 multica CLI 的落点（官方 tar 直接解到 /usr/local/bin） */
+    fun multicaBin(context: Context): File = File(rootfsDir(context), "usr/local/bin/multica")
+
+    /** multica CLI 是否就绪（rootfs 已解 + 可执行文件在） */
+    fun multicaCliReady(context: Context): Boolean =
+        rootfsReady(context) && multicaBin(context).isFile
+
+    private fun multicaArchiveAvailable(context: Context): Boolean =
+        runCatching { context.assets.list("")?.contains(MULTICA_CLI_ASSET) == true }.getOrDefault(false)
+
+    private fun piteamworkArchiveAvailable(context: Context): Boolean =
+        runCatching { context.assets.list("")?.contains(PITEAMWORK_ASSET) == true }.getOrDefault(false)
+
+    @Volatile
+    private var multicaUnpacking = false
+
+    /**
+     * **首启把预置的 multica CLI 解进 guest 的 /usr/local/bin**（官方 tar 扁平布局：成员直接是
+     * multica/LICENSE/…，无需 --strip-components）。rootfs 未就绪时返回 false，由解包完成的
+     * 链式调用接手；归档不随包（普通版）时静默降级。完成后链式触发 piteamwork 预装。
+     */
+    fun ensureMulticaCliAsync(context: Context): Boolean {
+        if (multicaCliReady(context) || multicaUnpacking) return false
+        if (!rootfsReady(context)) return false
+        if (!multicaArchiveAvailable(context)) {
+            PientLog.w(TAG, "multica 未预置，且 APK 未内置 $MULTICA_CLI_ASSET（普通版静默降级）")
+            return false
+        }
+        Thread {
+            multicaUnpacking = true
+            try {
+                val binDir = File(rootfsDir(context), "usr/local/bin")
+                binDir.mkdirs()
+                val tar = File(tmpDir(context), MULTICA_CLI_ASSET)
+                tar.parentFile?.mkdirs()
+                context.assets.open(MULTICA_CLI_ASSET).use { input ->
+                    tar.outputStream().use { input.copyTo(it) }
+                }
+                val cmd = "cd ${binDir.absolutePath} && gunzip -c ${tar.absolutePath} | tar -x"
+                val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = proc.inputStream.bufferedReader().readText()
+                val code = proc.waitFor()
+                if (code != 0) PientLog.w(TAG, "multica 解包退出码 $code：${out.takeLast(200)}")
+                // umask 077 会把解出的文件压成 0600：少 +x 就是 Permission denied
+                runCatching { Os.chmod(multicaBin(context).absolutePath, 0b111101101) }   // 0755
+                    .onFailure { PientLog.w(TAG, "multica chmod 失败：${it.message}") }
+                runCatching { tar.delete() }
+                PientLog.i(TAG, "multica 预置完成 ok=${multicaCliReady(context)}")
+            } catch (e: Exception) {
+                PientLog.w(TAG, "multica 解包异常：${e.message}")
+            } finally {
+                multicaUnpacking = false
+                ensurePiteamworkPreloadAsync(context)   // multica 就绪后补一次预装判定
+            }
+        }.apply {
+            isDaemon = true
+            name = "pient-multica-unpack"
+        }.start()
+        return true
+    }
+
+    /** guest 里 piteamwork 的预装目录（归档解到这，pi install 以本地路径源安装） */
+    private fun piteamworkPreloadDir(context: Context): File =
+        File(rootfsDir(context), "root/.pient-preload/piteamwork")
+
+    /** 预装幂等判据：pi 的用户设置里已登记 piteamwork 预装源（pi 写 JSON 会转义斜杠 `\/`，按段匹配） */
+    private fun piteamworkInstalled(context: Context): Boolean = runCatching {
+        File(PiAgentFiles.agentDir(context), "settings.json")
+            .readText().replace("\\\\/", "/").contains(".pient-preload/piteamwork")
+    }.getOrDefault(false)
+
+    @Volatile
+    private var piteamworkPreloading = false
+
+    /**
+     * **rootfs/pi/multica 三者就绪后，把预置的 piteamwork 插件装进 pi**（与 upup 预装同款）。
+     * 流程 = 解 assets 归档到 `/root/.pient-preload/piteamwork`，再 `pi install` 本地路径源。
+     * 幂等：settings.json 已含该源即跳过；失败只记日志不重试（插件页可手动补装）。
+     */
+    fun ensurePiteamworkPreloadAsync(context: Context): Boolean {
+        if (piteamworkPreloading || piteamworkInstalled(context)) return false
+        if (!rootfsReady(context) || !piReady(context) || !multicaCliReady(context)) return false
+        if (!piteamworkArchiveAvailable(context)) return false
+        Thread {
+            piteamworkPreloading = true
+            try {
+                val dir = piteamworkPreloadDir(context)
+                dir.parentFile?.mkdirs()
+                val tar = File(tmpDir(context), PITEAMWORK_ASSET)
+                context.assets.open(PITEAMWORK_ASSET).use { input ->
+                    tar.outputStream().use { input.copyTo(it) }
+                }
+                // 归档顶层是 piteamwork/，剥掉后落成 .pient-preload/piteamwork/
+                val cmd = "mkdir -p ${dir.absolutePath} && gunzip -c ${tar.absolutePath} | " +
+                    "tar -x --strip-components=1 -C ${dir.absolutePath}"
+                val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = proc.inputStream.bufferedReader().readText()
+                val code = proc.waitFor()
+                runCatching { tar.delete() }
+                if (code != 0 || !File(dir, "package.json").isFile) {
+                    PientLog.w(TAG, "piteamwork 预装包解包失败（$code）：${out.takeLast(200)}")
+                    return@Thread
+                }
+                // 经 pi 自己的安装路径注册（与用户手动装同源）；runPi 是 suspend，桥接一次
+                val (rc, piOut) = kotlinx.coroutines.runBlocking {
+                    PiPackages.runPi(context, "install /root/.pient-preload/piteamwork", 180_000)
+                }
+                PientLog.i(
+                    TAG,
+                    "piteamwork 预装完成 rc=$rc installed=${piteamworkInstalled(context)}：${piOut.takeLast(200)}",
+                )
+            } catch (e: Exception) {
+                PientLog.w(TAG, "piteamwork 预装异常：${e.message}")
+            } finally {
+                piteamworkPreloading = false
+            }
+        }.apply {
+            isDaemon = true
+            name = "pient-piteamwork-preload"
         }.start()
         return true
     }
