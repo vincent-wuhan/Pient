@@ -53,6 +53,9 @@ interface SettingsStrings {
     val dataSourceSaved: String
     val dataSourceRegister: String
     val dataSourcePointsHint: String
+    val multicaPatTitle: String
+    val multicaPatHint: String
+    val multicaPatPlaceholder: String
     val groupAbout: String
     val aboutSubtitle: String
     fun versionLabel(a0: Any?): String
@@ -225,6 +228,9 @@ object ZhSettings : SettingsStrings {
     override val dataSourceSaved: String = "已保存，下一轮对话生效"
     override val dataSourceRegister: String = "申请 Token（注册 tushare.pro）"
     override val dataSourcePointsHint: String = "注册即送基础积分；2000 积分解锁财报与筛选接口（完善资料、绑定公众号可快速获取）。"
+    override val multicaPatTitle: String = "Multica PAT"
+    override val multicaPatHint: String = "配置后可在对话中查看与管理 opc.yueming.xin 的项目、任务与进度（创建/更新 issue、评论）。PAT 在 Multica 控制台生成，仅存本地。"
+    override val multicaPatPlaceholder: String = "粘贴 Multica PAT"
     override val groupAbout: String = "关于Pient"
     override val aboutSubtitle: String = "版本与产品信息"
     override fun versionLabel(a0: Any?): String = "版本 ${a0}"
@@ -393,6 +399,9 @@ object EnSettings : SettingsStrings {
     override val dataSourceSaved: String = "Saved — takes effect on the next message"
     override val dataSourceRegister: String = "Get a token (register at tushare.pro)"
     override val dataSourcePointsHint: String = "Registration grants base points; 2000 points unlock earnings and screening APIs (complete your profile and bind WeChat to earn faster)."
+    override val multicaPatTitle: String = "Multica PAT"
+    override val multicaPatHint: String = "Once set, you can view and manage projects, tasks and progress (create/update issues, comments) on opc.yueming.xin right in the chat. Generate the PAT in the Multica console; it is stored locally only."
+    override val multicaPatPlaceholder: String = "Paste your Multica PAT"
     override val groupAbout: String = "About Pient"
     override val aboutSubtitle: String = "Version & product info"
     override fun versionLabel(a0: Any?): String = "Version ${a0}"

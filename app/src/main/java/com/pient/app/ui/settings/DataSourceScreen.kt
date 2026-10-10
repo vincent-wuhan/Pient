@@ -1,5 +1,6 @@
 package com.pient.app.ui.settings
 
+import com.pient.app.data.PiAgentFiles
 import com.pient.app.data.i18n.L
 import android.content.Intent
 import android.net.Uri
@@ -70,6 +71,15 @@ fun DataSourceScreen(nav: NavController) {
         )
     }
     var showToken by remember { mutableStateOf(false) }
+    var multicaPat by remember {
+        mutableStateOf(
+            runCatching {
+                JSONObject(PiRuntime.pluginEnvFile(context).readText())
+                    .optString("MULTICA_PAT", "")
+            }.getOrDefault("")
+        )
+    }
+    var showPat by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         // 顶部栏（与用量页同款）
@@ -140,6 +150,61 @@ fun DataSourceScreen(nav: NavController) {
                                     f.writeText(obj.toString(2))
                                 }
                                 // pi 只在进程启动时读 env → 打脏标记让下轮对话前重启通道生效
+                                PiRpc.markConfigDirty()
+                                scope.launch { snackbar.showSnackbar(L.settings.dataSourceSaved) }
+                            },
+                        ) {
+                            Text(L.settings.dataSourceSave)
+                        }
+                    }
+                }
+            }
+
+            // ── Multica PAT（自托管 opc.yueming.xin 的项目管理）──
+            // 无注册链接卡：PAT 由用户在 Multica 控制台自行生成（自托管服务没有推广注册入口），
+            // 怎么生成写在 multicaPatHint 文案里。
+            Card(colors = CardDefaults.cardColors()) {
+                Column(
+                    Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        L.settings.multicaPatTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        L.settings.multicaPatHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = multicaPat,
+                        onValueChange = { multicaPat = it.trim() },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text(L.settings.multicaPatPlaceholder) },
+                        visualTransformation =
+                            if (showPat) VisualTransformation.None
+                            else PasswordVisualTransformation(),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(onClick = { showPat = !showPat }) {
+                            Text(if (showPat) "🙈" else "👁")
+                        }
+                        Button(
+                            onClick = {
+                                runCatching {
+                                    // ① 环境变量（pi-teamwork 插件从 ctx.env 读 MULTICA_PAT）
+                                    val f = PiRuntime.pluginEnvFile(context)
+                                    f.parentFile?.mkdirs()
+                                    val obj = runCatching { JSONObject(f.readText()) }
+                                        .getOrElse { JSONObject() }
+                                    obj.put("MULTICA_PAT", multicaPat)
+                                    f.writeText(obj.toString(2))
+                                    // ② settings.json 的 pi-teamwork 块（provider/multica/token）——
+                                    // 只增删这一个键，pi 自管的其余键原样保留
+                                    PiAgentFiles.mergePiteamworkConfig(context, multicaPat.ifBlank { null })
+                                }
                                 PiRpc.markConfigDirty()
                                 scope.launch { snackbar.showSnackbar(L.settings.dataSourceSaved) }
                             },

@@ -181,6 +181,43 @@ object PiAgentFiles {
         false
     }
 
+    /**
+     * 合并写 pi-teamwork 配置块（multica-chat-control）。pat 非空→置块；空→移除块。
+     * 合并语义：只增删 "pi-teamwork" 键，其余键（packages 等 pi 自管的）原样保留。
+     * 返回**内容是否真有变化**（不是「写成功」）—— 见 [write]。
+     */
+    fun mergePiteamworkConfig(context: Context, pat: String?): Boolean = runCatching {
+        val root = readJson(settingsFile(context)) ?: JSONObject()
+        val changed: Boolean
+        if (pat.isNullOrBlank()) {
+            // 文件不存在且本来就没有这个块 → 无事可做
+            if (!root.has("pi-teamwork")) return@runCatching false
+            root.remove("pi-teamwork")
+            changed = true
+        } else {
+            root.put(
+                "pi-teamwork",
+                JSONObject()
+                    .put("enabled", true)
+                    .put("provider", "multica")
+                    .put(
+                        "multica",
+                        JSONObject()
+                            .put("serverUrl", "https://opc.yueming.xin")
+                            .put("appUrl", "https://opc.yueming.xin")
+                            .put("token", pat.trim()),
+                    ),
+            )
+            changed = true
+        }
+        val wrote = write(settingsFile(context), root.toString(2))
+        if (wrote) PientLog.i(TAG, "settings.json 已合并 pi-teamwork 块（${if (pat.isNullOrBlank()) "移除" else "更新"}）")
+        changed && wrote
+    }.getOrElse {
+        PientLog.w(TAG, "settings.json pi-teamwork 合并失败：${it.message}")
+        false
+    }
+
     // ─────────────────────────── 读 ───────────────────────────
 
     /** 读三份文件 → (每个 provider 的字段, 该 provider 的 apiKey)；文件不存在返回空 */
