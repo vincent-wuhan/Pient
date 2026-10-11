@@ -82,6 +82,42 @@ def npm_install() -> pathlib.Path:
     raise SystemExit(f"npm install 全部失败：{last}")
 
 
+def hoist_entry(nm: pathlib.Path) -> None:
+    """把真实的 @amaster.ai/pi-teamwork 包内容提到 staging 根。
+
+    pi 通过根 package.json 的 `pi.extensions` 字段找扩展入口。
+    staging 经 npm install 产出的根 package.json 是空壳（无 pi 字段）→
+    pi 报 "Cannot find module '/root/.pient-preload/piteamwork'" 并崩溃。
+
+    修复：复制真实包的 package.json（含 pi.extensions=["./dist/index.js"]）
+    和 dist/ 目录到 staging 根，node_modules 保持原位供依赖解析。
+    """
+    real = nm / PKG
+    real_pj = real / "package.json"
+    if not real_pj.is_file():
+        raise SystemExit(f"hoist_entry: 找不到真实包 {real_pj}")
+
+    # 复制 dist/（扩展入口 ./dist/index.js 相对根解析）
+    for item in real.iterdir():
+        if item.name in ("node_modules", "package.json"):
+            continue
+        dst = STAGE / item.name
+        if dst.exists():
+            shutil.rmtree(dst) if dst.is_dir() else dst.unlink()
+        if item.is_file():
+            shutil.copy2(item, dst)
+        else:
+            shutil.copytree(item, dst)
+
+    # 用真实 package.json 覆盖空壳（保留 dependencies 供 node_modules 解析一致性）
+    real_meta = json.loads(real_pj.read_text(encoding="utf-8"))
+    shell_meta = json.loads((STAGE / "package.json").read_text(encoding="utf-8"))
+    merged = {**shell_meta, **real_meta}
+    (STAGE / "package.json").write_text(
+        json.dumps(merged, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    log("根 package.json 已替换为真实 pi-teamwork 入口（pi.extensions 就位）")
+
+
 def pack(nm: pathlib.Path, out: pathlib.Path) -> None:
     """把 stage/ 内容打成 gzip tar，顶层目录名 `piteamwork`"""
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -113,6 +149,8 @@ def main() -> int:
     # 执行后核对：npm 会装出 package.json 声明的依赖，目标包必须在
     if not (nm / PKG / "package.json").is_file():
         raise SystemExit(f"npm install 后仍缺 {nm / PKG} —— 安装未生效")
+
+    hoist_entry(nm)
 
     out = pathlib.Path(a.out).resolve()
     pack(nm, out)
