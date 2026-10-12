@@ -26,6 +26,11 @@ E=${PIENT_EXEC_ENV:-$(cat "$P/exec_env" 2>/dev/null)}
 W=$(cat "$P/workspace" 2>/dev/null)
 [ -n "$W" ] && [ -d "$W" ] || W=$P/app
 
+# 鸿蒙/部分设备上 app 目录可能尚未由 prepareTerminal 创建 → bind 失败会级联
+# （can't sanitize binding → chdir /workspace 失败 → bash 退化到 /）
+# 这里兜底 mkdir，代价为零（目录已存在时 no-op）
+mkdir -p "$W" 2>/dev/null
+
 # ── ① Ubuntu（chroot）：su 通道，真 root ──
 if [ "$E" = "ubuntu-chroot" ]; then
   if command -v su >/dev/null 2>&1; then
@@ -56,3 +61,9 @@ exec env -i \
   $P/bin/proot -0 -l -r $P/rootfs -w /workspace \
     -b /dev -b /proc -b /sys -b $W:/workspace \
     /bin/bash "$@"
+# 兜底：rootfs 里连 bash 都没有（解包失败/中断）时给一行诊断而不是静默退出
+# 鸿蒙等设备首启较慢，node/pi 可能尚未解包完——给用户明确提示而非 confusing 错误
+if [ ! -f "$P/rootfs/bin/bash" ]; then
+  echo "[pient] 环境正在准备中（rootfs 解包未完成），请稍等 1-3 分钟后重试" >&2
+  exit 1
+fi
