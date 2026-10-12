@@ -126,7 +126,39 @@ object LogExport {
         val exit = ExitHistory.last(context)?.let { "${it.label} · ${formatTime(it.timeMs)}" }
             ?: if (ExitHistory.supported()) "-" else "unsupported"
         sb.append("last_exit: ").append(exit).append('\n')
+        // 关键事件尾部：环境故障（解包失败/预置失败/SELinux 拒绝）散落在日志正文里，
+        // 用户不可能翻日志——把「排障真正要看的行」直接放进摘要，微信粘贴即可远程定位
+        sb.append(diagnosticEventsTail(context))
         return sb.toString()
+    }
+
+    /**
+     * 诊断事件尾部（追加进 [diagnosticSummary]）：过滤环境链关键行 + 最近若干条 WARN/ERROR，
+     * 每条截断单行。上限固定（≈30 行），摘要体积可控、不含对话正文。
+     */
+    private fun diagnosticEventsTail(context: Context): String {
+        val keys = listOf(
+            "解包结果", "解包退出码", "解包异常", "pi 预置完成", "pi 解包", "node 预置完成",
+            "node 解包", "upup 预装", "multica", "免配置预置", "通道已启动", "通道重启",
+            "avc: denied", "cannot link", "No such file",
+        )
+        return runCatching {
+            val records = PientLog.parseRecords(PientLog.readAll(context).lines())
+            val keyLines = records
+                .flatMap { r: PientLog.Record -> r.lines.map { (r.level to it) as Pair<Char?, String> } }
+                .filter { p: Pair<Char?, String> -> keys.any { p.second.contains(it, ignoreCase = true) } }
+                .let { it.takeLast(20) }
+            val warnErr = records
+                .filter { it.level == 'W' || it.level == 'E' }
+                .let { it.takeLast(8) }
+                .flatMap { r: PientLog.Record -> r.lines.map { "${r.level} ${r.tag ?: ""}: ${it.take(160)}" } }
+            val all = (keyLines.map { (lv, l) -> "${lv ?: 'I'} ${l.take(160)}" } + warnErr).toList()
+            if (all.isEmpty()) return@runCatching ""
+            buildString {
+                append("--- events tail ---\n")
+                all.take(30).forEach { append(it).append('\n') }
+            }
+        }.getOrDefault("")
     }
 
     private fun formatTime(ms: Long): String =

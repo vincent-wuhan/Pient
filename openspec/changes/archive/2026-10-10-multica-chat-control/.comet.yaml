@@ -1,0 +1,17 @@
+workflow: full
+phase: archive
+build_mode: subagent-driven-development
+build_pause: null
+isolation: branch
+verify_mode: null
+base_ref: d5d91bce63f3293cd5887c75cde2bffeb7634003
+design_doc: docs/superpowers/specs/2026-10-10-multica-chat-control-design.md
+plan: null
+verify_result: pass
+verification_report: docs/superpowers/reports/2026-10-10-multica-chat-control-verify.md
+branch_status: handled
+created_at: 2026-10-10
+verified_at: 2026-10-10
+archived: false
+handoff_context: openspec/changes/multica-chat-control/.comet/handoff/design-context.json
+handoff_hash: 6d7b218f5fe862d68ac4544e2f7ed896efdda0458a792af2c63150fe68dcecff

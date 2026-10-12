@@ -48,6 +48,7 @@ import com.pient.app.ui.plugins.PluginsScreen
 import com.pient.app.ui.settings.AboutScreen
 import com.pient.app.ui.settings.BehaviorSettingsScreen
 import com.pient.app.ui.settings.ChangelogScreen
+import com.pient.app.ui.settings.DataSourceScreen
 import com.pient.app.ui.settings.LanguageSettingsScreen
 import com.pient.app.ui.settings.LicenseTextScreen
 import com.pient.app.ui.settings.LicensesScreen
@@ -381,6 +382,9 @@ fun PientApp() {
                     }
                     composable("usage") {
                         UsageScreen(nav = nav)
+                    }
+                    composable("data_sources") {
+                        DataSourceScreen(nav = nav)
                     }
                     composable("project_management") {
                         ProjectManagementScreen(nav = nav, chatState = chatState)

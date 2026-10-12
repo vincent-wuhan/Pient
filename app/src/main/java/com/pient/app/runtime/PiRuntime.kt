@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.system.Os
 import com.pient.app.data.PientLog
+import com.pient.app.data.PiAgentFiles
 import java.io.File
 
 /**
@@ -229,7 +230,11 @@ object PiRuntime {
                     "arch=${elfMachine(rootfsBash(context))}（本机 ${hostMachine()}）",
             )
             onProgress(1f, if (ok) L.runtime.unpackDone else L.runtime.unpackNoBash)
-            if (ok) ensurePiAsync(context)      // rootfs 一就绪就把预置的 pi 铺进 npm 全局位置
+            if (ok) {
+                ensurePiAsync(context)      // rootfs 一就绪就把预置的 pi 铺进 npm 全局位置
+                ensureNodeAsync(context)    // 完整版：node 也随包，一并铺进 /usr/local
+                ensureMulticaCliAsync(context)   // multica CLI 同款：rootfs 就绪即可解进 /usr/local/bin
+            }
             return ok
         } catch (e: Exception) {
             PientLog.w(TAG, "解包异常：${e.message}")
@@ -436,6 +441,8 @@ object PiRuntime {
         ExecBridge.writeEndpointFile(context)
         ensureRootfsAsync(context)
         ensurePiAsync(context)      // rootfs 未就绪时它会直接返回，等解包完的链式调用再补
+        ensureNodeAsync(context)    // 同上：node 归档随包时的链式入口
+        ensureUpupPreloadAsync(context)
     }
 
     /**
@@ -498,6 +505,29 @@ object PiRuntime {
     }.getOrElse {
         PientLog.w(TAG, "pi 扩展安装失败：${it.message}")
         false
+    }
+
+    /**
+     * **免配置预置（state 部分）**：默认模型选择与思考档位。服务商/密钥的预置不走文件层——
+     * 首启窗口存在多写入者（pi 归一化 / 迁移 / 统一落盘），文件会被覆盖；那部分由
+     * `AiConfigStore.load` 在读盘为空时从 assets 注入（见 [PiAgentFiles.readPreset]）。
+     * 幂等且不越权：目标文件已存在一律跳过。
+     */
+    fun installPresetConfig(context: Context) {
+        val targets = listOf(
+            "pient-state-default.json" to File(context.filesDir, "pient_data/state.json"),
+            "pient-env-default.json" to pluginEnvFile(context),
+        )
+        for ((asset, target) in targets) {
+            runCatching {
+                val text = context.assets.open(asset)
+                    .use { it.readBytes().toString(Charsets.UTF_8) }
+                if (target.isFile) return@runCatching   // 用户已有配置，绝不覆盖
+                target.parentFile?.mkdirs()
+                target.writeText(text)
+                PientLog.i(TAG, "免配置预置已落盘：${target.absolutePath}")
+            }
+        }
     }
 
     /** pi 的版本（读解出来的 package.json；读不到返回空串） */
@@ -574,6 +604,7 @@ object PiRuntime {
                 PientLog.w(TAG, "pi 解包异常：${e.message}")
             } finally {
                 piUnpacking = false
+                ensureUpupPreloadAsync(context)   // pi 就绪是预装的最后一环之一，顺手补一次
             }
         }.apply {
             isDaemon = true
@@ -582,13 +613,321 @@ object PiRuntime {
         return true
     }
 
+    // ─────────────── 完整版预置：Node.js 运行时 + upup 垂域插件 ───────────────
+
+    /** 随包的 Node.js 归档（assets；构建期 `syncPientNodeArchive` 放进来，v22 >= 22.19） */
+    private const val NODE_ARCHIVE_ASSET = "pient-node.tgz"
+
+    /** 随包的 upup 插件自包含归档（构建期 `packPientUpupArchive` 生成，包内带 node_modules） */
+    private const val UPUP_ARCHIVE_ASSET = "pient-upup.tgz"
+
+    /** guest 里 node 的落点（node 官方 tar 去顶层后解到 /usr/local/） */
+    fun nodeBin(context: Context): File = File(rootfsDir(context), "usr/local/bin/node")
+
+    /** node 是否就绪（rootfs 已解 + node 可执行文件在） */
+    fun nodeReady(context: Context): Boolean = rootfsReady(context) && nodeBin(context).isFile
+
+    private fun nodeArchiveAvailable(context: Context): Boolean =
+        runCatching { context.assets.list("")?.contains(NODE_ARCHIVE_ASSET) == true }.getOrDefault(false)
+
+    /**
+     * pi 通道的 node 就绪判据：node 归档随包（完整版）→ 必须已解出；归档不随包（普通版）
+     * → 不设要求（维持用户在环境页手动装 NodeSource 的既有路径）。
+     */
+    fun nodeUsable(context: Context): Boolean =
+        !nodeArchiveAvailable(context) || nodeReady(context)
+
+    private fun upupArchiveAvailable(context: Context): Boolean =
+        runCatching { context.assets.list("")?.contains(UPUP_ARCHIVE_ASSET) == true }.getOrDefault(false)
+
+    @Volatile
+    private var nodeUnpacking = false
+
+    /**
+     * **首启把预置的 Node.js 解进 guest 的 /usr/local**（官方 tar 布局：bin/node、bin/npm、
+     * lib/node_modules/npm/…；`--strip-components=1` 去掉顶层版本目录）。
+     * rootfs 未就绪时返回 false，由解包完成的链式调用接手。node 是 pi 的运行前提，
+     * 没有它 pi 通道起不来（此前需用户在环境页联网装 NodeSource，完整版改为随包离线就绪）。
+     */
+    fun ensureNodeAsync(context: Context): Boolean {
+        if (nodeReady(context) || nodeUnpacking) return false
+        if (!rootfsReady(context)) return false
+        if (!nodeArchiveAvailable(context)) {
+            PientLog.w(TAG, "node 未预置，且 APK 未内置 $NODE_ARCHIVE_ASSET（非完整版包）")
+            return false
+        }
+        Thread {
+            nodeUnpacking = true
+            try {
+                val local = File(rootfsDir(context), "usr/local")
+                local.mkdirs()
+                val tar = File(tmpDir(context), NODE_ARCHIVE_ASSET)
+                tar.parentFile?.mkdirs()
+                context.assets.open(NODE_ARCHIVE_ASSET).use { input ->
+                    tar.outputStream().use { input.copyTo(it) }
+                }
+                // Android 侧 tar：硬链接条目会因 SELinux 被拒（与 rootfs 同款问题），
+                // 判据用 node 可执行文件在不在，不迷信退出码
+                val cmd = "cd ${local.absolutePath} && gunzip -c ${tar.absolutePath} | tar -x --strip-components=1"
+                val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = proc.inputStream.bufferedReader().readText()
+                val code = proc.waitFor()
+                if (code != 0) PientLog.w(TAG, "node 解包退出码 $code：${out.takeLast(200)}")
+                // umask 077 会把解出的文件压成 0600：node/npm/npx 及 npm 的 js 入口都必须 +x
+                val chmod = ProcessBuilder(
+                    "/system/bin/sh", "-c",
+                    "chmod -R a+rx ${local.absolutePath}/bin " +
+                        "${local.absolutePath}/lib/node_modules/npm/bin 2>/dev/null",
+                ).redirectErrorStream(true).start().also { it.waitFor() }
+                runCatching { tar.delete() }
+                PientLog.i(
+                    TAG,
+                    "node 预置完成 ok=${nodeReady(context)} exe=${nodeBin(context).canExecute()}",
+                )
+            } catch (e: Exception) {
+                PientLog.w(TAG, "node 解包异常：${e.message}")
+            } finally {
+                nodeUnpacking = false
+                ensureUpupPreloadAsync(context)   // node 就绪后补一次预装判定
+                ensurePiteamworkPreloadAsync(context)   // piteamwork 预装同款：就绪条件可能已满足
+            }
+        }.apply {
+            isDaemon = true
+            name = "pient-node-unpack"
+        }.start()
+        return true
+    }
+
+    /** guest 里预装目录（upup 自包含包解到这，pi install 以本地路径源安装） */
+    private fun upupPreloadDir(context: Context): File =
+        File(rootfsDir(context), "root/.pient-preload/upup")
+
+    /** 预装幂等判据：pi 的用户设置里已登记 upup 预装源（pi 写 JSON 会转义斜杠 `\/`，按段匹配） */
+    private fun upupInstalled(context: Context): Boolean = runCatching {
+        File(PiAgentFiles.agentDir(context), "settings.json")
+            .readText().replace("\\\\/", "/").contains(".pient-preload/upup")
+    }.getOrDefault(false)
+
+    @Volatile
+    private var upupPreloading = false
+
+    /**
+     * **完整版：rootfs/pi/node 三者就绪后，把预置的 upup 插件装进 pi**。
+     * 流程 = 解 assets 归档到 `/root/.pient-preload/upup`，再 `pi install` 本地路径源
+     * （注册走 pi 自己的 settings.json 逻辑，与用户手动装完全同源，可 `pi remove` 卸载）。
+     * 幂等：settings.json 已含该源即跳过；失败只记日志不重试（插件页可手动补装）。
+     */
+    fun ensureUpupPreloadAsync(context: Context): Boolean {
+        if (upupPreloading || upupInstalled(context)) return false
+        if (!rootfsReady(context) || !piReady(context) || !nodeReady(context)) return false
+        if (!upupArchiveAvailable(context)) return false
+        Thread {
+            upupPreloading = true
+            try {
+                val dir = upupPreloadDir(context)
+                dir.parentFile?.mkdirs()
+                val tar = File(tmpDir(context), UPUP_ARCHIVE_ASSET)
+                context.assets.open(UPUP_ARCHIVE_ASSET).use { input ->
+                    tar.outputStream().use { input.copyTo(it) }
+                }
+                // 归档顶层是 benyue-upup-pient-plugin/，剥掉后直接落成 .pient-preload/upup/
+                val cmd = "mkdir -p ${dir.absolutePath} && gunzip -c ${tar.absolutePath} | " +
+                    "tar -x --strip-components=1 -C ${dir.absolutePath}"
+                val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = proc.inputStream.bufferedReader().readText()
+                val code = proc.waitFor()
+                runCatching { tar.delete() }
+                if (code != 0 || !File(dir, "package.json").isFile) {
+                    PientLog.w(TAG, "upup 预装包解包失败（$code）：${out.takeLast(200)}")
+                    return@Thread
+                }
+                // 经 pi 自己的安装路径注册（与用户手动装同源）；runPi 是 suspend，桥接一次
+                val (rc, piOut) = kotlinx.coroutines.runBlocking {
+                    PiPackages.runPi(context, "install /root/.pient-preload/upup", 180_000)
+                }
+                PientLog.i(
+                    TAG,
+                    "upup 预装完成 rc=$rc installed=${upupInstalled(context)}：${piOut.takeLast(200)}",
+                )
+            } catch (e: Exception) {
+                PientLog.w(TAG, "upup 预装异常：${e.message}")
+            } finally {
+                upupPreloading = false
+            }
+        }.apply {
+            isDaemon = true
+            name = "pient-upup-preload"
+        }.start()
+        return true
+    }
+
+    // ─────────────── multica CLI + piteamwork 扩展（multica-chat-control 预置链） ───────────────
+
+    /** 随包的 multica CLI 归档（官方 tar 是扁平结构：成员直接就是 multica/LICENSE/…，无需 strip） */
+    private const val MULTICA_CLI_ASSET = "pient-multica-cli.tgz"
+
+    /** 随包的 piteamwork 插件归档（构建期打包，顶层是 piteamwork/） */
+    private const val PITEAMWORK_ASSET = "pient-piteamwork.tgz"
+
+    /** guest 里 multica CLI 的落点（官方 tar 直接解到 /usr/local/bin） */
+    fun multicaBin(context: Context): File = File(rootfsDir(context), "usr/local/bin/multica")
+
+    /** multica CLI 是否就绪（rootfs 已解 + 可执行文件在） */
+    fun multicaCliReady(context: Context): Boolean =
+        rootfsReady(context) && multicaBin(context).isFile
+
+    private fun multicaArchiveAvailable(context: Context): Boolean =
+        runCatching { context.assets.list("")?.contains(MULTICA_CLI_ASSET) == true }.getOrDefault(false)
+
+    private fun piteamworkArchiveAvailable(context: Context): Boolean =
+        runCatching { context.assets.list("")?.contains(PITEAMWORK_ASSET) == true }.getOrDefault(false)
+
+    @Volatile
+    private var multicaUnpacking = false
+
+    /**
+     * **首启把预置的 multica CLI 解进 guest 的 /usr/local/bin**（官方 tar 扁平布局：成员直接是
+     * multica/LICENSE/…，无需 --strip-components）。rootfs 未就绪时返回 false，由解包完成的
+     * 链式调用接手；归档不随包（普通版）时静默降级。完成后链式触发 piteamwork 预装。
+     */
+    fun ensureMulticaCliAsync(context: Context): Boolean {
+        if (multicaCliReady(context) || multicaUnpacking) return false
+        if (!rootfsReady(context)) return false
+        if (!multicaArchiveAvailable(context)) {
+            PientLog.w(TAG, "multica 未预置，且 APK 未内置 $MULTICA_CLI_ASSET（普通版静默降级）")
+            return false
+        }
+        Thread {
+            multicaUnpacking = true
+            try {
+                val binDir = File(rootfsDir(context), "usr/local/bin")
+                binDir.mkdirs()
+                val tar = File(tmpDir(context), MULTICA_CLI_ASSET)
+                tar.parentFile?.mkdirs()
+                context.assets.open(MULTICA_CLI_ASSET).use { input ->
+                    tar.outputStream().use { input.copyTo(it) }
+                }
+                val cmd = "cd ${binDir.absolutePath} && gunzip -c ${tar.absolutePath} | tar -x"
+                val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = proc.inputStream.bufferedReader().readText()
+                val code = proc.waitFor()
+                if (code != 0) PientLog.w(TAG, "multica 解包退出码 $code：${out.takeLast(200)}")
+                // umask 077 会把解出的文件压成 0600：少 +x 就是 Permission denied
+                runCatching { Os.chmod(multicaBin(context).absolutePath, 0b111101101) }   // 0755
+                    .onFailure { PientLog.w(TAG, "multica chmod 失败：${it.message}") }
+                runCatching { tar.delete() }
+                PientLog.i(TAG, "multica 预置完成 ok=${multicaCliReady(context)}")
+            } catch (e: Exception) {
+                PientLog.w(TAG, "multica 解包异常：${e.message}")
+            } finally {
+                multicaUnpacking = false
+                ensurePiteamworkPreloadAsync(context)   // multica 就绪后补一次预装判定
+            }
+        }.apply {
+            isDaemon = true
+            name = "pient-multica-unpack"
+        }.start()
+        return true
+    }
+
+    /** guest 里 piteamwork 的预装目录（归档解到这，pi install 以本地路径源安装） */
+    private fun piteamworkPreloadDir(context: Context): File =
+        File(rootfsDir(context), "root/.pient-preload/piteamwork")
+
+    /** 预装幂等判据：pi 的用户设置里已登记 piteamwork 预装源（pi 写 JSON 会转义斜杠 `\/`，按段匹配） */
+    private fun piteamworkInstalled(context: Context): Boolean = runCatching {
+        File(PiAgentFiles.agentDir(context), "settings.json")
+            .readText().replace("\\\\/", "/").contains(".pient-preload/piteamwork")
+    }.getOrDefault(false)
+
+    @Volatile
+    private var piteamworkPreloading = false
+
+    /**
+     * **rootfs/pi/multica 三者就绪后，把预置的 piteamwork 插件装进 pi**（与 upup 预装同款）。
+     * 流程 = 解 assets 归档到 `/root/.pient-preload/piteamwork`，再 `pi install` 本地路径源。
+     * 幂等：settings.json 已含该源即跳过；失败只记日志不重试（插件页可手动补装）。
+     */
+    fun ensurePiteamworkPreloadAsync(context: Context): Boolean {
+        if (piteamworkPreloading || piteamworkInstalled(context)) return false
+        if (!rootfsReady(context) || !piReady(context) || !multicaCliReady(context)) return false
+        if (!piteamworkArchiveAvailable(context)) return false
+        Thread {
+            piteamworkPreloading = true
+            try {
+                val dir = piteamworkPreloadDir(context)
+                dir.parentFile?.mkdirs()
+                val tar = File(tmpDir(context), PITEAMWORK_ASSET)
+                context.assets.open(PITEAMWORK_ASSET).use { input ->
+                    tar.outputStream().use { input.copyTo(it) }
+                }
+                // 归档顶层是 piteamwork/，剥掉后落成 .pient-preload/piteamwork/
+                val cmd = "mkdir -p ${dir.absolutePath} && gunzip -c ${tar.absolutePath} | " +
+                    "tar -x --strip-components=1 -C ${dir.absolutePath}"
+                val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = proc.inputStream.bufferedReader().readText()
+                val code = proc.waitFor()
+                runCatching { tar.delete() }
+                if (code != 0 || !File(dir, "package.json").isFile) {
+                    PientLog.w(TAG, "piteamwork 预装包解包失败（$code）：${out.takeLast(200)}")
+                    return@Thread
+                }
+                // 经 pi 自己的安装路径注册（与用户手动装同源）；runPi 是 suspend，桥接一次
+                val (rc, piOut) = kotlinx.coroutines.runBlocking {
+                    PiPackages.runPi(context, "install /root/.pient-preload/piteamwork", 180_000)
+                }
+                PientLog.i(
+                    TAG,
+                    "piteamwork 预装完成 rc=$rc installed=${piteamworkInstalled(context)}：${piOut.takeLast(200)}",
+                )
+            } catch (e: Exception) {
+                PientLog.w(TAG, "piteamwork 预装异常：${e.message}")
+            } finally {
+                piteamworkPreloading = false
+            }
+        }.apply {
+            isDaemon = true
+            name = "pient-piteamwork-preload"
+        }.start()
+        return true
+    }
+
+    /**
+     * **插件环境变量**文件（`files/pient_data/plugin_env.json`，键值对 JSON）：
+     * 桌面 pi 靠 `export` 注入（如 UPUP_TUSHARE_TOKEN）；Pient 的 pi 进程环境是
+     * [environment] 拼的固定集，插件拿不到任何用户配置 —— 本文件就是那条注入通道，
+     * 值随 guest env 进 pi 进程（插件的 ctx.env 可读）。配置入口：设置 → 数据源配置。
+     */
+    fun pluginEnvFile(context: Context): File =
+        File(context.filesDir, "pient_data/plugin_env.json")
+
+    /** 读插件环境变量；文件缺失/损坏返回空（解析失败按空处理，不阻断通道） */
+    fun pluginEnv(context: Context): Map<String, String> = runCatching {
+        val text = pluginEnvFile(context).readText()
+        val obj = org.json.JSONObject(text)
+        buildMap {
+            for (k in obj.keys()) {
+                val v = obj.optString(k, "")
+                if (v.isNotBlank() && System.getenv(k) == null) put(k, v)
+            }
+        }
+    }.getOrDefault(emptyMap())
+
     fun environment(context: Context): Map<String, String> = mapOf(
         "LD_LIBRARY_PATH" to libDir(context).absolutePath,
         "PATH" to "${linkDir(context).absolutePath}:" +
             System.getenv("PATH").orEmpty().ifEmpty { "/system/bin:/system/xbin" },
         "HOME" to File(root(context), "home").absolutePath,
         "TMPDIR" to tmpDir(context).absolutePath,
-    )
+    ) + pluginEnv(context)
 
     /**
      * **应用内部**调用 guest 时的环境变量：强制 Ubuntu（PRoot）。

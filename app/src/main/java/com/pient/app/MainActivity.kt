@@ -61,6 +61,10 @@ class MainActivity : ComponentActivity() {
         // 放在解包 / 前台服务 / 回桥之前：后面几步的日志都要进文件。
         PientLog.install(this)
 
+        // 免配置版：assets 带 pient-*-default.json 时预置服务商/密钥/默认模型。
+        // 必须在 Compose 读盘（ChatStore.load）之前跑，首启即生效；目标已存在则不覆盖。
+        PiRuntime.installPresetConfig(this)
+
         // 后台常驻通知（行为设置）：开着就在每次启动时把常驻档重新挂上
         //（进程被杀 / 换包后常驻通知要自己回来；关着则什么都不做，维持按需前台化）。
         if (SettingsStore.residentNotification) {
@@ -71,6 +75,14 @@ class MainActivity : ComponentActivity() {
         PiRuntime.ensureRootfsAsync(this)
         // 预置的 pi 包解进 Ubuntu（rootfs 未就绪时立即返回，由解包完成后的链式调用接手）
         PiRuntime.ensurePiAsync(this)
+        // 完整版预置：Node.js 运行时解进 /usr/local；三件套（rootfs/pi/node）就绪后自动
+        // pi install upup 插件（归档不随包时两者都是空操作，即普通版行为不变）
+        PiRuntime.ensureNodeAsync(this)
+        PiRuntime.ensureUpupPreloadAsync(this)
+        // multica-chat-control 预置链：multica CLI 解进 /usr/local/bin，三件套（rootfs/pi/multica）
+        // 就绪后自动 pi install piteamwork 插件（multica 归档不随包时两者都是空操作，普通版不受影响）
+        PiRuntime.ensureMulticaCliAsync(this)
+        PiRuntime.ensurePiteamworkPreloadAsync(this)
         // Android shell 回桥：guest 里的 pi 工具要执行 Android 命令时，
         // 经 loopback 回到应用执行（Shizuku 的 binder 只在 Java 侧可达）。起在应用启动，
         // 端点文件每次请求都会刷新（档位/授权变化后无需重启 pi）。

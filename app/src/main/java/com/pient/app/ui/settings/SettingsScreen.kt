@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
@@ -135,6 +136,14 @@ fun SettingsScreen(nav: NavController) {
                     title = L.settings.usage,
                     subtitle = L.settings.usageSubtitle,
                     onClick = { nav.navigate("usage") },
+                )
+                DividerLine()
+                // 数据源配置：垂域数据凭证（Tushare Token 等）→ 注入 pi 进程环境
+                SettingsRow(
+                    icon = Icons.Outlined.Storage,
+                    title = L.settings.dataSources,
+                    subtitle = L.settings.dataSourcesSubtitle,
+                    onClick = { nav.navigate("data_sources") },
                 )
                 DividerLine()
                 // 应用日志管理：运行日志的导出 / 查看 / 清空

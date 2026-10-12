@@ -59,6 +59,10 @@ android {
     buildFeatures {
         compose = true
     }
+    lint {
+        // release 的 lintVital 需联网拉 lint 工具链（kotlin-compiler 等），镜像环境直接跳过
+        checkReleaseBuilds = false
+    }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         jniLibs {
@@ -228,14 +232,108 @@ val writePientRuntimeLibsManifest = tasks.register("writePientRuntimeLibsManifes
     doLast {
         val f = pientRuntimeLibsManifest.get().asFile
         f.parentFile.mkdirs()
-        val libFiles = (pientRootfsLibDir.listFiles() ?: emptyArray()).toList()
-        val lines = libFiles
-            .filter { it.isFile && (it.name.endsWith(".so") || it.name.contains(".so.")) }
-            .sortedBy { it.name }
-            .map { "${it.name} ${pientJniLibName(it.name)}" }
+        // 链接名必须取 ELF 的 DT_SONAME（loader 实际查找的名字），不能取文件名：
+        // libtalloc.so.2.5.0 的 SONAME 是 libtalloc.so.2，用文件名会让设备端
+        // ensureLinks 建错链 → proot "cannot link executable: libtalloc.so.2 not found"。
+        // deb 的 SONAME 软链在打包进 jniLibs 时已丢（只收 lib*.so 实文件），只能读 ELF 还原。
+        val proc = ProcessBuilder(
+            "python3",
+            rootProject.layout.projectDirectory.file("runtime/scripts/elf_soname.py").asFile.absolutePath,
+            pientRootfsLibDir.absolutePath,
+        ).redirectErrorStream(true).start()
+        val out = proc.inputStream.bufferedReader().readLines()
+        val code = proc.waitFor()
+        if (code != 0) throw GradleException("elf_soname.py 退出码 $code：${out.joinToString("\n").take(500)}")
+        val lines = out.filter { it.isNotBlank() }.map { line ->
+            val (soname, fileName) = line.split(" ", limit = 2)
+            "$soname ${pientJniLibName(fileName)}"
+        }
+        require(lines.isNotEmpty()) { "运行时库映射表为空：${pientRootfsLibDir} 内无共享库" }
         f.writeText(lines.joinToString("\n") + "\n")
         println("pient 运行时库映射表：${lines.size} 项 → ${f.absolutePath}")
     }
+}
+
+// ─────────────── 完整版预置：Node.js 运行时 + upup 垂域插件 ───────────────
+// pi 是 node 应用但 node 不随包的话首启必须联网走 NodeSource——「装完即用」口径下
+// 把官方 v22（>=22.19）二进制一并打进 assets，首启解到 guest /usr/local/。
+// node 官方二进制用 arm64 命名（非 Debian 的 aarch64），与 rootfs ABI 名做一次映射
+val pientNodeArch = when (pientRootfsAbi) {
+    "aarch64" -> "arm64"
+    else -> pientRootfsAbi
+}
+val pientNodeArchive = File(
+    rootProject.layout.projectDirectory.asFile,
+    "runtime/cache/node/node-linux-$pientNodeArch.tgz",
+)
+val syncPientNodeArchive = tasks.register<Copy>("syncPientNodeArchive") {
+    description = "把 Node.js v22 二进制放进 assets（pi 的运行时前提，首启解到 /usr/local）"
+    doFirst {
+        if (!pientNodeArchive.isFile) {
+            throw GradleException(
+                "终端层缓存缺少 Node.js 归档：${pientNodeArchive.absolutePath}\n" +
+                    "  先拉取：python runtime/scripts/fetch_node.py --abi $pientNodeArch",
+            )
+        }
+    }
+    from(pientNodeArchive) { rename { "pient-node.tgz" } }
+    into(layout.buildDirectory.dir("generated/pientAssets"))
+}
+
+// upup 插件自包含包（包内 node_modules 带 SDK/typebox，pi install 本地路径无需 registry）
+val pientUpupArchive = layout.buildDirectory.file("generated/pientAssets/pient-upup.tgz")
+val packPientUpupArchive = tasks.register<Exec>("packPientUpupArchive") {
+    description = "把 monorepo 的 upup 插件打成自包含 assets 归档（首启 pi install 预装）"
+    outputs.file(pientUpupArchive)
+    commandLine(
+        "python3",
+        rootProject.layout.projectDirectory.file("runtime/scripts/pack_upup_asset.py").asFile.absolutePath,
+        "--monorepo",
+        rootProject.providers.gradleProperty("pient.upupMonorepo").getOrElse("../../android-pinet-plugin"),
+        "--out", pientUpupArchive.get().asFile.absolutePath,
+    )
+}
+
+// multica-cli（multica-ai/multica 的设备端 CLI，聊天控制通道）：Go 单二进制，
+// 同 node 一样重打包成 .tgz 放 assets（.tar.gz 会被 aapt 自动解压去后缀）
+val pientMulticaArchive = File(
+    rootProject.layout.projectDirectory.asFile,
+    "runtime/cache/multica/multica-cli.tgz",
+)
+val syncPientMulticaCli = tasks.register<Copy>("syncPientMulticaCli") {
+    description = "把 multica-cli 二进制归档放进 assets（multica 聊天控制通道的设备端 CLI）"
+    doFirst {
+        if (!pientMulticaArchive.isFile) {
+            throw GradleException(
+                "终端层缓存缺少 multica-cli 归档：${pientMulticaArchive.absolutePath}\n" +
+                    "  先拉取：python runtime/scripts/fetch_multica.py",
+            )
+        }
+    }
+    from(pientMulticaArchive) { rename { "pient-multica-cli.tgz" } }
+    into(layout.buildDirectory.dir("generated/pientAssets"))
+}
+
+// pi-teamwork（@amaster.ai/pi-teamwork，multica 聊天控制的 teamwork 侧插件）：
+// npm 依赖闭包自包含包。⚠️ Exec 的 cwd 是 app/ 模块目录，相对路径会指错地方 ——
+// 传给脚本的参数一律用绝对路径。
+val pientPiteamworkArchive = layout.buildDirectory.file("generated/pientAssets/pient-piteamwork.tgz")
+val packPientPiteamwork = tasks.register<Exec>("packPientPiteamwork") {
+    description = "把 @amaster.ai/pi-teamwork 打成自包含 assets 归档（multica 聊天控制通道预置）"
+    outputs.file(pientPiteamworkArchive)
+    commandLine(
+        "python3",
+        rootProject.layout.projectDirectory.file("runtime/scripts/pack_piteamwork_asset.py").asFile.absolutePath,
+        "--out", pientPiteamworkArchive.get().asFile.absolutePath,
+    )
+}
+
+// 免配置预置（runtime/preset/*.json 在则打包，缺失则跳过=普通版；含 key 故不入库）
+val syncPientPresetConfig = tasks.register<Copy>("syncPientPresetConfig") {
+    description = "把免配置预置（pi 服务商/密钥/默认模型）放进 assets（文件存在才打包）"
+    from(rootProject.layout.projectDirectory.dir("runtime/preset"))
+    include("pient-*-default.json")
+    into(layout.buildDirectory.dir("generated/pientAssets"))
 }
 
 /** 终端层的依赖库（PRoot 的 libtalloc / libandroid-shmem）随包 */
@@ -286,6 +384,9 @@ tasks.named("preBuild") {
         syncPientTerminalBinaries, syncPientRootfsArchive,
         syncPientRuntimeLibs, writePientRuntimeLibsManifest,
         syncPientPiArchive,
+        syncPientNodeArchive, packPientUpupArchive,
+        syncPientMulticaCli, packPientPiteamwork,
+        syncPientPresetConfig,
     )
     // 切 ABI 时清掉上一次构建留在 jniLibs 源目录里的另一套 ABI（jniLibs 源是整个
     // build/pientJniLibs，不清就会 fat 出包：arm64 包里会混进 x86_64 的 proot/loader）

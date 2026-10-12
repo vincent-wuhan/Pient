@@ -1,0 +1,14 @@
+{
+  "change": "multica-chat-control",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "6d7b218f5fe862d68ac4544e2f7ed896efdda0458a792af2c63150fe68dcecff",
+  "files": [
+    { "path": "openspec/changes/multica-chat-control/proposal.md", "sha256": "e5db0a035e4c8309e34b591b947e1bb15296072170e39f5e9bfe102612966a34" },
+    { "path": "openspec/changes/multica-chat-control/design.md", "sha256": "b334979477a4182369872272f474cb202a13b63cbc97570e89875b24ca028a71" },
+    { "path": "openspec/changes/multica-chat-control/tasks.md", "sha256": "a7b4f687a0e723a09d2c6fcb060be2464af731bb1cb54b45b593920771c8f296" },
+    { "path": "openspec/changes/multica-chat-control/specs/multica-chat-control/spec.md", "sha256": "6fcf3a77346744576a2bb868ff1e586fd2ebeae314a9d72c31872ee933dd823c" }
+  ]
+}
