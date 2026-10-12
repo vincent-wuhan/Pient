@@ -477,6 +477,16 @@ fun ChatScreen(chatState: ChatState, nav: NavController, startupReady: Boolean =
                     reason = chatState.piUnreadyReason,
                     onRetry = { chatState.refreshPiReadiness() },
                     onFix = { nav.navigate("terminal_setup") },
+                    onDiagnose = {
+                        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                        val text = com.pient.app.data.LogExport.diagnosticSummary(context)
+                        cm?.setPrimaryClip(
+                            android.content.ClipData.newPlainText("pient-diagnostic", text)
+                        )
+                        android.widget.Toast.makeText(
+                            context, L.common.copied, android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    },
                     modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 2.dp),
                 )
             }
@@ -1129,6 +1139,7 @@ private fun PiUnreadyStrip(
     reason: String,
     onRetry: () -> Unit,
     onFix: () -> Unit,
+    onDiagnose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(12.dp)
@@ -1174,6 +1185,16 @@ private fun PiUnreadyStrip(
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier
                 .clickable(onClick = onFix)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+        )
+        // 一键复制诊断摘要（环境报告 + 关键事件尾部）——环境故障时用户第一眼就在这条
+        // 条上；不用翻日志页，微信粘贴即可远程排障
+        Text(
+            "📋 诊断",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .clickable(onClick = onDiagnose)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
         )
     }
